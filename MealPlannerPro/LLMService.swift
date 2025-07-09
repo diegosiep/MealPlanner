@@ -506,7 +506,7 @@ class OpenAIProvider: LLMProvider {
 // MARK: - Correct Free Hugging Face Provider
 class HuggingFaceProvider: LLMProvider {
     let name = "Hugging Face Free API"
-    private let apiKey = "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" // ← Your token here
+    private let apiKey = "example" // ← Your token here
     
     func generateCompletion(prompt: String) async throws -> String {
         guard !apiKey.isEmpty && apiKey != "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" else {

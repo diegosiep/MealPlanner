@@ -3,12 +3,12 @@ import Foundation
 // MARK: - Claude AI Provider for Meal Planning
 class ClaudeProvider: LLMProvider {
     let name = "Claude AI (Anthropic)"
-    private let apiKey = "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" // Replace with your actual API key
+    private let apiKey = "example" // Replace with your actual API key
     private let baseURL = "https://api.anthropic.com/v1/messages"
     
     func generateCompletion(prompt: String) async throws -> String {
         // Validate API key
-//        guard !apiKey.isEmpty && apiKey != "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" else {
+//        guard !apiKey.isEmpty && apiKey != "example" else {
 //            throw LLMError.invalidAPIKey
 //        }
         

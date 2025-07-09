@@ -1,7 +1,7 @@
 import Foundation
 
 class USDAFoodService: ObservableObject {
-    private let apiKey = "KED0QmItd8YsnsLur1Q7bRpaQKsRv1NHF2MhjMEY"
+    private let apiKey = "example"
     private let baseURL = "https://api.nal.usda.gov/fdc/v1"
     
     func searchFoods(query: String) async throws -> [USDAFood] {
