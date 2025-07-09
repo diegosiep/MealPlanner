@@ -79,24 +79,7 @@ enum MealType: String, CaseIterable {
     case lunch = "lunch"
     case dinner = "dinner"
     case snack = "snack"
-    
-    var displayName: String {
-        switch self {
-        case .breakfast: return "Breakfast"
-        case .lunch: return "Lunch"
-        case .dinner: return "Dinner"
-        case .snack: return "Snack"
-        }
-    }
-    
-    var emoji: String {
-        switch self {
-        case .breakfast: return "🌅"
-        case .lunch: return "🌞"
-        case .dinner: return "🌙"
-        case .snack: return "🍎"
-        }
-    }
+ 
 }
 
 // MARK: - Daily Meal Plan View

@@ -66,8 +66,7 @@ class MultiDayMealPlanningService: ObservableObject {
         
         // Generate each meal for this day
         for mealType in request.mealsPerDay {
-            print("🍽️ Generating \(mealType.displayName) for day \(dayNumber)")
-            
+                        
             // Create meal request with variety considerations
             let mealRequest = createMealRequest(
                 for: mealType,
