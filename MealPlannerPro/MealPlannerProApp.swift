@@ -6,7 +6,7 @@ import CoreData
 @main
 struct MealPlannerProApp: App {
     let persistenceController = PersistenceController.shared
-
+    
     var body: some Scene {
         WindowGroup {
             UpdatedContentView() // Use the new enhanced ContentView
@@ -288,7 +288,11 @@ struct OnboardingView: View {
                         .tag(index)
                 }
             }
+#if os(iOS)
             .tabViewStyle(PageTabViewStyle())
+#else
+            .tabViewStyle(DefaultTabViewStyle())
+#endif
             .frame(height: 400)
             
             HStack {

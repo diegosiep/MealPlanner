@@ -418,6 +418,13 @@ extension MultiDayMealPlanningService {
             )
         }
         
+        private func extractBaseIngredientName(_ fullName: String) -> String {
+              // Extract the main ingredient from USDA-style names
+              // "Chicken, broilers or fryers, breast, meat only, cooked, grilled" -> "Chicken"
+              let components = fullName.components(separatedBy: ",")
+              return components.first?.trimmingCharacters(in: .whitespaces) ?? fullName
+          }
+        
         private func extractRecentIngredients(from previousDays: [DailyMealPlan], dayNumber: Int) -> Set<String> {
             var ingredients = Set<String>()
             
