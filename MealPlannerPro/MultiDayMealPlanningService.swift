@@ -376,9 +376,384 @@ struct SpanishStrings: LocalizedStrings {
 
 // MARK: - Portion Preferences
 struct PortionPreferences {
-    let preferMetric: Bool // grams vs ounces
+    var preferMetric: Bool // grams vs ounces
     let preferLargePortion: Bool
     let customPortionMultiplier: Double // 0.5 to 2.0
     let avoidedFoodSizes: [String] // e.g., ["large", "jumbo"]
     let preferredMeasurements: [String] // e.g., ["cup", "tablespoon", "piece"]
+}
+
+// MARK: - Enhanced Multi-Day Planning Service
+extension MultiDayMealPlanningService {
+    
+    // MARK: - Intelligent Variety Management
+    struct VarietyManager {
+        private let maxRepeatDays: Int = 3 // Don't repeat same ingredient within 3 days
+        private let cuisineRotationStrength: Double = 0.8 // How strongly to enforce cuisine rotation
+        private let nutritionVarietyBonus: Double = 0.2 // Bonus for nutritional variety
+        
+        func createVarietyConstraints(
+            for dayNumber: Int,
+            request: MultiDayPlanRequest,
+            previousDays: [DailyMealPlan]
+        ) -> VarietyConstraints {
+            
+            let recentIngredients = extractRecentIngredients(from: previousDays, dayNumber: dayNumber)
+            let recentCuisines = extractRecentCuisines(from: previousDays, dayNumber: dayNumber)
+            let nutritionGaps = identifyNutritionGaps(from: previousDays, targetGoals: request)
+            
+            return VarietyConstraints(
+                avoidIngredients: recentIngredients,
+                preferredCuisine: selectOptimalCuisine(
+                    dayNumber: dayNumber,
+                    availableCuisines: request.cuisineRotation,
+                    recentCuisines: recentCuisines
+                ),
+                nutritionPriorities: nutritionGaps,
+                varietyInstructions: generateVarietyInstructions(
+                    dayNumber: dayNumber,
+                    recentIngredients: recentIngredients,
+                    nutritionGaps: nutritionGaps
+                )
+            )
+        }
+        
+        private func extractRecentIngredients(from previousDays: [DailyMealPlan], dayNumber: Int) -> Set<String> {
+            var ingredients = Set<String>()
+            
+            // Look at last few days (up to maxRepeatDays)
+            let startIndex = max(0, previousDays.count - maxRepeatDays)
+            let recentDays = Array(previousDays[startIndex...])
+            
+            for day in recentDays {
+                for meal in day.meals {
+                    for food in meal.verifiedFoods {
+                        let baseIngredient = extractBaseIngredientName(food.originalAISuggestion.name)
+                        ingredients.insert(baseIngredient.lowercased())
+                    }
+                }
+            }
+            
+            return ingredients
+        }
+        
+        private func extractRecentCuisines(from previousDays: [DailyMealPlan], dayNumber: Int) -> [String] {
+            var cuisines: [String] = []
+            
+            let startIndex = max(0, previousDays.count - 2) // Last 2 days
+            let recentDays = Array(previousDays[startIndex...])
+            
+            for day in recentDays {
+                for meal in day.meals {
+                    if let cuisine = identifyCuisineFromMeal(meal) {
+                        cuisines.append(cuisine)
+                    }
+                }
+            }
+            
+            return cuisines
+        }
+        
+        private func identifyNutritionGaps(from previousDays: [DailyMealPlan], targetGoals: MultiDayPlanRequest) -> [NutritionPriority] {
+            guard !previousDays.isEmpty else { return [] }
+            
+            var priorities: [NutritionPriority] = []
+            
+            // Calculate average nutrition from previous days
+            let avgCalories = previousDays.reduce(0) { $0 + $1.dailyNutritionSummary.calories } / Double(previousDays.count)
+            let avgProtein = previousDays.reduce(0) { $0 + $1.dailyNutritionSummary.protein } / Double(previousDays.count)
+            let avgCarbs = previousDays.reduce(0) { $0 + $1.dailyNutritionSummary.carbs } / Double(previousDays.count)
+            let avgFat = previousDays.reduce(0) { $0 + $1.dailyNutritionSummary.fat } / Double(previousDays.count)
+            
+            // Identify gaps compared to targets
+            if avgProtein < targetGoals.dailyProtein * 0.9 {
+                priorities.append(.increaseProtein)
+            }
+            if avgCarbs < targetGoals.dailyCarbs * 0.9 {
+                priorities.append(.increaseCarbs)
+            }
+            if avgFat < targetGoals.dailyFat * 0.9 {
+                priorities.append(.increaseFat)
+            }
+            
+            // Add micronutrient priorities based on food variety
+            if hasLowVegetableVariety(previousDays) {
+                priorities.append(.increaseVegetableVariety)
+            }
+            if hasLowProteinVariety(previousDays) {
+                priorities.append(.increaseProteinVariety)
+            }
+            
+            return priorities
+        }
+        
+        private func selectOptimalCuisine(
+            dayNumber: Int,
+            availableCuisines: [String],
+            recentCuisines: [String]
+        ) -> String? {
+            guard !availableCuisines.isEmpty else { return nil }
+            
+            // Simple rotation if no recent cuisine history
+            if recentCuisines.isEmpty {
+                let index = (dayNumber - 1) % availableCuisines.count
+                return availableCuisines[index]
+            }
+            
+            // Find cuisine that hasn't been used recently
+            let unusedCuisines = availableCuisines.filter { cuisine in
+                !recentCuisines.contains(cuisine)
+            }
+            
+            if !unusedCuisines.isEmpty {
+                let index = (dayNumber - 1) % unusedCuisines.count
+                return unusedCuisines[index]
+            }
+            
+            // If all cuisines have been used, pick the least recent one
+            return availableCuisines.randomElement()
+        }
+        
+        private func generateVarietyInstructions(
+            dayNumber: Int,
+            recentIngredients: Set<String>,
+            nutritionGaps: [NutritionPriority]
+        ) -> String {
+            var instructions: [String] = []
+            
+            // Variety instructions
+            if !recentIngredients.isEmpty {
+                let ingredientsList = Array(recentIngredients.prefix(5)).joined(separator: ", ")
+                instructions.append("Para variar, evita estos ingredientes usados recientemente: \(ingredientsList)")
+            }
+            
+            // Nutrition priority instructions
+            for priority in nutritionGaps {
+                switch priority {
+                case .increaseProtein:
+                    instructions.append("Prioriza fuentes de proteína de alta calidad")
+                case .increaseCarbs:
+                    instructions.append("Incluye carbohidratos complejos saludables")
+                case .increaseFat:
+                    instructions.append("Agrega grasas saludables como aceite de oliva, aguacate o nueces")
+                case .increaseVegetableVariety:
+                    instructions.append("Incluye una amplia variedad de vegetales coloridos")
+                case .increaseProteinVariety:
+                    instructions.append("Varía las fuentes de proteína (pescado, pollo, legumbres, etc.)")
+                }
+            }
+            
+            // Day-specific instructions for meal timing
+            switch dayNumber % 7 {
+            case 1: // Monday
+                instructions.append("Comienza la semana con comidas energizantes y nutritivas")
+            case 3: // Wednesday
+                instructions.append("A mitad de semana, enfócate en comidas que mantengan la energía estable")
+            case 5: // Friday
+                instructions.append("Termina la semana con comidas satisfactorias pero ligeras")
+            case 0, 6: // Weekend
+                instructions.append("Fin de semana: permite comidas más elaboradas y sabrosas")
+            default:
+                break
+            }
+            
+            return instructions.joined(separator: ". ")
+        }
+        
+        private func hasLowVegetableVariety(_ days: [DailyMealPlan]) -> Bool {
+            var vegetables = Set<String>()
+            
+            for day in days {
+                for meal in day.meals {
+                    for food in meal.verifiedFoods {
+                        if isVegetable(food.originalAISuggestion.name) {
+                            vegetables.insert(extractBaseIngredientName(food.originalAISuggestion.name))
+                        }
+                    }
+                }
+            }
+            
+            return vegetables.count < 3 // Less than 3 different vegetables
+        }
+        
+        private func hasLowProteinVariety(_ days: [DailyMealPlan]) -> Bool {
+            var proteins = Set<String>()
+            
+            for day in days {
+                for meal in day.meals {
+                    for food in meal.verifiedFoods {
+                        if isProtein(food.originalAISuggestion.name) {
+                            proteins.insert(extractBaseIngredientName(food.originalAISuggestion.name))
+                        }
+                    }
+                }
+            }
+            
+            return proteins.count < 2 // Less than 2 different protein sources
+        }
+        
+        private func isVegetable(_ foodName: String) -> Bool {
+            let vegetables = ["spinach", "broccoli", "lettuce", "tomato", "carrot", "pepper", "onion", "zucchini"]
+            return vegetables.contains { foodName.lowercased().contains($0) }
+        }
+        
+        private func isProtein(_ foodName: String) -> Bool {
+            let proteins = ["chicken", "salmon", "beef", "turkey", "cod", "tuna", "eggs", "tofu"]
+            return proteins.contains { foodName.lowercased().contains($0) }
+        }
+        
+        private func identifyCuisineFromMeal(_ meal: VerifiedMealPlanSuggestion) -> String? {
+            let mealName = meal.originalAISuggestion.mealName.lowercased()
+            
+            let cuisineKeywords: [String: [String]] = [
+                "Mexicano": ["taco", "burrito", "salsa", "avocado", "lime", "cilantro"],
+                "Mediterráneo": ["olive", "lemon", "herb", "tomato", "feta", "mediterranean"],
+                "Asiático": ["soy", "ginger", "sesame", "rice", "stir", "asian"],
+                "Italiano": ["pasta", "parmesan", "basil", "marinara", "italian"],
+                "Americano": ["burger", "bbq", "american", "classic"]
+            ]
+            
+            for (cuisine, keywords) in cuisineKeywords {
+                if keywords.contains(where: { mealName.contains($0) }) {
+                    return cuisine
+                }
+            }
+            
+            return nil
+        }
+    }
+    
+    // MARK: - Enhanced Day Generation with Variety Constraints
+    func generateSingleDayPlanWithVariety(
+        dayNumber: Int,
+        request: MultiDayPlanRequest,
+        previousDays: [DailyMealPlan]
+    ) async throws -> DailyMealPlan {
+        
+        let varietyManager = VarietyManager()
+        let varietyConstraints = varietyManager.createVarietyConstraints(
+            for: dayNumber,
+            request: request,
+            previousDays: previousDays
+        )
+        
+        var meals: [VerifiedMealPlanSuggestion] = []
+        let date = Calendar.current.date(byAdding: .day, value: dayNumber - 1, to: request.startDate) ?? request.startDate
+        
+        print("📅 Generating day \(dayNumber) with variety constraints:")
+        print("  - Preferred cuisine: \(varietyConstraints.preferredCuisine ?? "Any")")
+        print("  - Avoiding ingredients: \(varietyConstraints.avoidIngredients.count) items")
+        
+        for mealType in request.mealsPerDay {
+            let mealRequest = createVarietyAwareMealRequest(
+                for: mealType,
+                baseRequest: request,
+                varietyConstraints: varietyConstraints,
+                existingMealsToday: meals
+            )
+            
+            let verifiedMeal = try await verifiedMealService.generateVerifiedMealPlan(request: mealRequest)
+            meals.append(verifiedMeal)
+            
+            await MainActor.run {
+                currentProgress += 1
+            }
+        }
+        
+        return DailyMealPlan(
+            date: date,
+            meals: meals,
+            dailyNutritionSummary: calculateDailyNutrition(meals: meals)
+        )
+    }
+    
+    private func createVarietyAwareMealRequest(
+        for mealType: MealType,
+        baseRequest: MultiDayPlanRequest,
+        varietyConstraints: VarietyConstraints,
+        existingMealsToday: [VerifiedMealPlanSuggestion]
+    ) -> MealPlanRequest {
+        
+        let mealCalories = calculateMealCalories(
+            totalDailyCalories: baseRequest.dailyCalories,
+            mealType: mealType
+        )
+        
+        // Enhanced variety instructions combining all constraints
+        var varietyInstructions = varietyConstraints.varietyInstructions
+        
+        if let preferredCuisine = varietyConstraints.preferredCuisine {
+            varietyInstructions += ". Estilo de cocina preferido: \(preferredCuisine)"
+        }
+        
+        // Add daily meal coordination
+        if !existingMealsToday.isEmpty {
+            let todaysIngredients = existingMealsToday.flatMap { meal in
+                meal.verifiedFoods.map { $0.originalAISuggestion.name }
+            }
+            if !todaysIngredients.isEmpty {
+                varietyInstructions += ". Ya se usaron hoy: \(todaysIngredients.joined(separator: ", "))"
+            }
+        }
+        
+        return MealPlanRequest(
+            targetCalories: mealCalories,
+            targetProtein: baseRequest.dailyProtein * Double(mealCalories) / Double(baseRequest.dailyCalories),
+            targetCarbs: baseRequest.dailyCarbs * Double(mealCalories) / Double(baseRequest.dailyCalories),
+            targetFat: baseRequest.dailyFat * Double(mealCalories) / Double(baseRequest.dailyCalories),
+            mealType: mealType,
+            cuisinePreference: varietyConstraints.preferredCuisine,
+            dietaryRestrictions: baseRequest.dietaryRestrictions,
+            medicalConditions: baseRequest.medicalConditions,
+            patientId: baseRequest.patientId,
+            varietyInstructions: varietyInstructions,
+            language: baseRequest.language
+        )
+    }
+}
+
+// MARK: - Supporting Data Models for Variety Management
+struct VarietyConstraints {
+    let avoidIngredients: Set<String>
+    let preferredCuisine: String?
+    let nutritionPriorities: [NutritionPriority]
+    let varietyInstructions: String
+}
+
+enum NutritionPriority {
+    case increaseProtein
+    case increaseCarbs
+    case increaseFat
+    case increaseVegetableVariety
+    case increaseProteinVariety
+}
+
+// MARK: - Enhanced MealPlanRequest with Variety Support
+extension MealPlanRequest {
+    init(
+        targetCalories: Int,
+        targetProtein: Double,
+        targetCarbs: Double,
+        targetFat: Double,
+        mealType: MealType,
+        cuisinePreference: String?,
+        dietaryRestrictions: [String],
+        medicalConditions: [String],
+        patientId: UUID?,
+        varietyInstructions: String?,
+        language: PlanLanguage
+    ) {
+        self.init(
+            targetCalories: targetCalories,
+            targetProtein: targetProtein,
+            targetCarbs: targetCarbs,
+            targetFat: targetFat,
+            mealType: mealType,
+            cuisinePreference: cuisinePreference,
+            dietaryRestrictions: dietaryRestrictions,
+            medicalConditions: medicalConditions,
+            patientId: patientId
+        )
+        // Note: We'll need to add these properties to the base struct
+    }
 }

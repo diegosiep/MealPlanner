@@ -1148,14 +1148,14 @@ struct DetailedAccuracy {
 extension LLMService {
     
     // MARK: - USDA-Compatible Prompt Engineering
-    private func createUSDACompatiblePrompt(from request: MealPlanRequest) -> String {
+    func createUSDACompatiblePrompt(from request: MealPlanRequest) -> String {
         // First, let's validate and fix the macro targets if they don't add up
         let correctedRequest = validateAndCorrectMacros(request)
         
         // Calculate context for the calorie target
         let calorieContext = getCalorieContext(for: correctedRequest)
         
-        var prompt = """
+        var prompt: String = """
         You are a professional registered dietitian creating a precise meal plan. You must think in terms of INDIVIDUAL INGREDIENTS that exist in the USDA food database.
         
         CRITICAL: Break down meals into separate, basic ingredients rather than compound dishes.
@@ -1287,6 +1287,34 @@ extension LLMService {
 
 
 // MARK: - Enhanced MealPlanRequest for Multi-Day Planning
+struct EnhancedMealPlanRequest {
+    let targetCalories: Int
+    let targetProtein: Double
+    let targetCarbs: Double
+    let targetFat: Double
+    let mealType: MealType
+    let cuisinePreference: String?
+    let dietaryRestrictions: [String]
+    let medicalConditions: [String]
+    let patientId: UUID?
+    let varietyInstructions: String?
+    let language: PlanLanguage
+    
+    init(from baseRequest: MealPlanRequest, varietyInstructions: String? = nil, language: PlanLanguage = .spanish) {
+        self.targetCalories = baseRequest.targetCalories
+        self.targetProtein = baseRequest.targetProtein
+        self.targetCarbs = baseRequest.targetCarbs
+        self.targetFat = baseRequest.targetFat
+        self.mealType = baseRequest.mealType
+        self.cuisinePreference = baseRequest.cuisinePreference
+        self.dietaryRestrictions = baseRequest.dietaryRestrictions
+        self.medicalConditions = baseRequest.medicalConditions
+        self.patientId = baseRequest.patientId
+        self.varietyInstructions = varietyInstructions
+        self.language = language
+    }
+}
+
 extension MealPlanRequest {
     var varietyInstructions: String? { nil }
     var language: PlanLanguage { .spanish }

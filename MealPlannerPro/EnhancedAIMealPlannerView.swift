@@ -1,5 +1,14 @@
 import SwiftUI
 import PDFKit
+import CoreData
+
+#if canImport(UIKit)
+import UIKit
+#endif
+
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - Enhanced Multi-Day Meal Planner View
 struct EnhancedAIMealPlannerView: View {
@@ -583,6 +592,26 @@ enum PlannerTab: CaseIterable {
     case setup, results, export
 }
 
+// MARK: - Restriction Toggle Component
+struct RestrictionToggle: View {
+    let restriction: String
+    let isSelected: Bool
+    let toggle: () -> Void
+    
+    var body: some View {
+        Button(action: toggle) {
+            Text(restriction)
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
+                .foregroundColor(isSelected ? .white : .primary)
+                .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Multi-Day Plan Results View
 struct MultiDayPlanResultsView: View {
     let plan: MultiDayMealPlan
@@ -857,6 +886,7 @@ struct PDFViewerSheet: View {
     }
     
     private func sharePDF() {
+        #if canImport(UIKit)
         let activityViewController = UIActivityViewController(
             activityItems: [pdfData],
             applicationActivities: nil
@@ -866,11 +896,27 @@ struct PDFViewerSheet: View {
            let window = windowScene.windows.first {
             window.rootViewController?.present(activityViewController, animated: true)
         }
+        #endif
     }
 }
 
 // MARK: - PDFKit Integration
-struct PDFKitRepresentable: UIViewRepresentable {
+struct PDFKitRepresentable: View {
+    let document: PDFDocument
+    
+    var body: some View {
+        #if canImport(UIKit)
+        PDFKitUIViewRepresentable(document: document)
+        #elseif canImport(AppKit)
+        PDFKitNSViewRepresentable(document: document)
+        #else
+        Text("PDF viewing not supported on this platform")
+        #endif
+    }
+}
+
+#if canImport(UIKit)
+struct PDFKitUIViewRepresentable: UIViewRepresentable {
     let document: PDFDocument
     
     func makeUIView(context: Context) -> PDFView {
@@ -884,3 +930,21 @@ struct PDFKitRepresentable: UIViewRepresentable {
         uiView.document = document
     }
 }
+#endif
+
+#if canImport(AppKit)
+struct PDFKitNSViewRepresentable: NSViewRepresentable {
+    let document: PDFDocument
+    
+    func makeNSView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.document = document
+        pdfView.autoScales = true
+        return pdfView
+    }
+    
+    func updateNSView(_ nsView: PDFView, context: Context) {
+        nsView.document = document
+    }
+}
+#endif

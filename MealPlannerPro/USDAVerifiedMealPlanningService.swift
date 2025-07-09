@@ -220,3 +220,289 @@ class USDAVerifiedMealPlanningService: ObservableObject {
         return notes
     }
 }
+
+
+// Enhanced USDA Verification with Intelligent Ingredient Separation
+extension USDAVerifiedMealPlanningService {
+    
+    // MARK: - Enhanced Food Verification with Ingredient Separation
+    private func verifyFoodWithUSDAEnhanced(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
+        // Step 1: Check if this is a compound food that needs separation
+        let separatedIngredients = separateCompoundFood(aiFood)
+        
+        if separatedIngredients.count > 1 {
+            // Handle compound foods by verifying each ingredient separately
+            return try await verifyCompoundFood(aiFood: aiFood, ingredients: separatedIngredients)
+        } else {
+            // Handle single ingredient foods with enhanced matching
+            return try await verifySingleIngredient(aiFood: aiFood)
+        }
+    }
+    
+    // MARK: - Compound Food Separation
+    private func separateCompoundFood(_ aiFood: SuggestedFood) -> [SuggestedFood] {
+        let foodName = aiFood.name.lowercased()
+        
+        // Detect compound foods that should be separated
+        let compoundPatterns = [
+            "sautéed in": ["base", "oil"],
+            "cooked with": ["base", "cooking_method"],
+            "grilled with": ["base", "seasonings"],
+            "mixed with": ["base", "additions"],
+            "served with": ["main", "side"]
+        ]
+        
+        for (pattern, components) in compoundPatterns {
+            if foodName.contains(pattern) {
+                return separateByPattern(aiFood, pattern: pattern, components: components)
+            }
+        }
+        
+        // Check for common compound food indicators
+        if isCompoundFood(foodName) {
+            return separateCompoundFoodIntelligently(aiFood)
+        }
+        
+        return [aiFood] // Return as single ingredient if no separation needed
+    }
+    
+    private func isCompoundFood(_ foodName: String) -> Bool {
+        let compoundIndicators = [
+            "sautéed", "grilled", "cooked in", "with oil", "in sauce",
+            "mixed", "seasoned", "marinated", "dressed", "topped with"
+        ]
+        
+        return compoundIndicators.contains { foodName.contains($0) }
+    }
+    
+    private func separateCompoundFoodIntelligently(_ aiFood: SuggestedFood) -> [SuggestedFood] {
+        let name = aiFood.name.lowercased()
+        var separatedFoods: [SuggestedFood] = []
+        
+        // Extract base ingredient
+        let baseIngredient = extractBaseIngredient(from: name)
+        let cookingMethod = extractCookingMethod(from: name)
+        let additions = extractAdditions(from: name)
+        
+        // Create base ingredient (80% of weight and calories)
+        let baseWeight = aiFood.gramWeight * 0.8
+        let baseCalories = aiFood.estimatedNutrition.calories * 0.8
+        
+        separatedFoods.append(SuggestedFood(
+            name: baseIngredient,
+            portionDescription: "\(Int(baseWeight))g",
+            gramWeight: baseWeight,
+            estimatedNutrition: EstimatedNutrition(
+                calories: baseCalories,
+                protein: aiFood.estimatedNutrition.protein * 0.8,
+                carbs: aiFood.estimatedNutrition.carbs * 0.8,
+                fat: aiFood.estimatedNutrition.fat * 0.3 // Less fat in base ingredient
+            )
+        ))
+        
+        // Add cooking oil if sautéed or fried (20% of weight and calories)
+        if cookingMethod.contains("sautéed") || cookingMethod.contains("fried") {
+            let oilWeight = aiFood.gramWeight * 0.2
+            let oilCalories = aiFood.estimatedNutrition.calories * 0.2
+            
+            separatedFoods.append(SuggestedFood(
+                name: "Oil, olive, salad or cooking",
+                portionDescription: "\(Int(oilWeight))g",
+                gramWeight: oilWeight,
+                estimatedNutrition: EstimatedNutrition(
+                    calories: oilCalories,
+                    protein: 0,
+                    carbs: 0,
+                    fat: aiFood.estimatedNutrition.fat * 0.7 // Most fat comes from oil
+                )
+            ))
+        }
+        
+        // Add other additions if detected
+        for addition in additions {
+            let additionWeight = aiFood.gramWeight * 0.1
+            separatedFoods.append(SuggestedFood(
+                name: addition,
+                portionDescription: "\(Int(additionWeight))g",
+                gramWeight: additionWeight,
+                estimatedNutrition: EstimatedNutrition(calories: 10, protein: 0, carbs: 2, fat: 0)
+            ))
+        }
+        
+        return separatedFoods
+    }
+    
+    private func extractBaseIngredient(from name: String) -> String {
+        // Extract the main ingredient name
+        let ingredients = ["chicken", "salmon", "spinach", "broccoli", "rice", "quinoa", "beef", "turkey", "cod", "tuna"]
+        
+        for ingredient in ingredients {
+            if name.contains(ingredient) {
+                return "\(ingredient.capitalized), raw" // Format for USDA compatibility
+            }
+        }
+        
+        // Fallback: take first part before comma or "in"/"with"
+        if let firstPart = name.components(separatedBy: CharacterSet(charactersIn: ",")).first {
+            return firstPart.trimmingCharacters(in: .whitespaces).capitalized
+        }
+        
+        return name.capitalized
+    }
+    
+    private func extractCookingMethod(from name: String) -> String {
+        let methods = ["sautéed", "grilled", "baked", "fried", "steamed", "boiled", "roasted"]
+        
+        for method in methods {
+            if name.contains(method) {
+                return method
+            }
+        }
+        
+        return "cooked"
+    }
+    
+    private func extractAdditions(from name: String) -> [String] {
+        var additions: [String] = []
+        
+        if name.contains("olive oil") {
+            additions.append("Oil, olive, salad or cooking")
+        }
+        if name.contains("garlic") {
+            additions.append("Garlic, raw")
+        }
+        if name.contains("herbs") {
+            additions.append("Herbs, fresh, mixed")
+        }
+        if name.contains("lemon") {
+            additions.append("Lemon juice, raw")
+        }
+        
+        return additions
+    }
+    
+    // MARK: - Enhanced Single Ingredient Verification
+    private func verifySingleIngredient(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
+        // Enhanced search with multiple strategies
+        var searchResults: [USDAFood] = []
+        
+        // Strategy 1: Direct name search
+        searchResults = try await usdaService.searchFoods(query: aiFood.name)
+        
+        // Strategy 2: If no results, try simplified name
+        if searchResults.isEmpty {
+            let simplifiedName = simplifyFoodName(aiFood.name)
+            searchResults = try await usdaService.searchFoods(query: simplifiedName)
+        }
+        
+        // Strategy 3: If still no results, try generic category
+        if searchResults.isEmpty {
+            let category = categorizeFoodForSearch(aiFood.name)
+            searchResults = try await usdaService.searchFoods(query: category)
+        }
+        
+        // Find best match using enhanced algorithm
+        if let usdaFood = findBestMatchEnhanced(aiFood: aiFood, usdaResults: searchResults) {
+            print("✅ Enhanced USDA match: \(usdaFood.description)")
+            
+            let adjustedPortion = calculateUSDAPortionNutrition(
+                usdaFood: usdaFood,
+                targetWeight: aiFood.gramWeight
+            )
+            
+            return VerifiedSuggestedFood(
+                originalAISuggestion: aiFood,
+                matchedUSDAFood: usdaFood,
+                verifiedNutrition: adjustedPortion,
+                matchConfidence: calculateEnhancedMatchConfidence(aiFood: aiFood, usdaFood: usdaFood),
+                isVerified: true,
+                verificationNotes: "Enhanced verification: \(usdaFood.description)"
+            )
+        } else {
+            print("⚠️ No enhanced USDA match for: \(aiFood.name)")
+            return VerifiedSuggestedFood(
+                originalAISuggestion: aiFood,
+                matchedUSDAFood: nil,
+                verifiedNutrition: aiFood.estimatedNutrition,
+                matchConfidence: 0.0,
+                isVerified: false,
+                verificationNotes: "Could not verify with enhanced USDA search"
+            )
+        }
+    }
+    
+    private func simplifyFoodName(_ name: String) -> String {
+        // Remove cooking methods and preparations
+        let unwantedWords = ["grilled", "baked", "sautéed", "cooked", "fresh", "organic", "in", "with", "oil"]
+        var simplified = name.lowercased()
+        
+        for word in unwantedWords {
+            simplified = simplified.replacingOccurrences(of: word, with: "")
+        }
+        
+        return simplified.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    private func categorizeFoodForSearch(_ name: String) -> String {
+        let lowerName = name.lowercased()
+        
+        if lowerName.contains("chicken") { return "chicken breast" }
+        if lowerName.contains("salmon") { return "salmon" }
+        if lowerName.contains("spinach") { return "spinach" }
+        if lowerName.contains("broccoli") { return "broccoli" }
+        if lowerName.contains("rice") { return "rice brown" }
+        if lowerName.contains("quinoa") { return "quinoa" }
+        
+        return "food" // Generic fallback
+    }
+    
+    private func findBestMatchEnhanced(aiFood: SuggestedFood, usdaResults: [USDAFood]) -> USDAFood? {
+        guard !usdaResults.isEmpty else { return nil }
+        
+        var bestMatch: USDAFood?
+        var bestScore = 0.0
+        
+        for usdaFood in usdaResults {
+            let score = calculateEnhancedSimilarityScore(aiFood: aiFood, usdaFood: usdaFood)
+            
+            if score > bestScore {
+                bestScore = score
+                bestMatch = usdaFood
+            }
+        }
+        
+        // Higher threshold for enhanced matching
+        return bestScore > 0.7 ? bestMatch : nil
+    }
+    
+    private func calculateEnhancedSimilarityScore(aiFood: SuggestedFood, usdaFood: USDAFood) -> Double {
+        let nameScore = calculateNameSimilarity(
+            aiName: aiFood.name.lowercased(),
+            usdaName: usdaFood.description.lowercased()
+        )
+        
+        let calorieScore = calculateNutritionSimilarity(
+            aiValue: aiFood.estimatedNutrition.calories,
+            usdaValue: usdaFood.calories
+        )
+        
+        let proteinScore = calculateNutritionSimilarity(
+            aiValue: aiFood.estimatedNutrition.protein,
+            usdaValue: usdaFood.protein
+        )
+        
+        // Weighted combination with name being most important
+        return (nameScore * 0.5) + (calorieScore * 0.3) + (proteinScore * 0.2)
+    }
+    
+    private func calculateNutritionSimilarity(aiValue: Double, usdaValue: Double) -> Double {
+        guard aiValue > 0 && usdaValue > 0 else { return 0.0 }
+        
+        let ratio = min(aiValue, usdaValue) / max(aiValue, usdaValue)
+        return ratio
+    }
+    
+    private func calculateEnhancedMatchConfidence(aiFood: SuggestedFood, usdaFood: USDAFood) -> Double {
+        return calculateEnhancedSimilarityScore(aiFood: aiFood, usdaFood: usdaFood)
+    }
+}

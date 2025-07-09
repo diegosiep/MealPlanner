@@ -1,7 +1,31 @@
+// Add these imports to the top of your ContentView.swift file
 import SwiftUI
 import CoreData
+import PDFKit
 
-struct ContentView: View {
+#if canImport(UIKit)
+import UIKit
+#endif
+
+#if canImport(AppKit)
+import AppKit
+#endif
+
+// Add this extension to fix missing MealType.allCases if needed
+extension MealType {
+    static var allCases: [MealType] {
+        return [.breakfast, .lunch, .dinner, .snack]
+    }
+}
+
+// Add this extension to fix missing PlanLanguage.allCases if needed
+extension PlanLanguage {
+    public static var allCases: [PlanLanguage] {
+        return [.english, .spanish]
+    }
+}
+
+struct UpdatedContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var usdaService = USDAFoodService()
     @StateObject private var foodManager: FoodDataManager
@@ -15,11 +39,11 @@ struct ContentView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Food Search Tab
-            FoodSearchView(usdaService: usdaService, foodManager: foodManager)
+            // Food Search Tab (Enhanced)
+            EnhancedFoodSearchView(usdaService: usdaService, foodManager: foodManager)
                 .tabItem {
                     Image(systemName: "magnifyingglass")
-                    Text("Search Foods")
+                    Text("Buscar Alimentos")
                 }
                 .tag(0)
             
@@ -27,32 +51,40 @@ struct ContentView: View {
             SavedFoodsView(foodManager: foodManager)
                 .tabItem {
                     Image(systemName: "heart.fill")
-                    Text("My Foods")
+                    Text("Mis Alimentos")
                 }
                 .tag(1)
             
-            // Meal Planning Tab
+            // Basic Meal Planning Tab
             MealPlanningView()
                 .tabItem {
                     Image(systemName: "calendar")
-                    Text("Meal Plans")
+                    Text("Planes Básicos")
                 }
                 .tag(2)
             
-            // AI Assistant Tab
+            // Enhanced AI Assistant Tab (Single Meals)
             AIMealPlannerView()
                 .tabItem {
                     Image(systemName: "brain.head.profile")
-                    Text("AI Assistant")
+                    Text("Asistente IA")
                 }
                 .tag(3)
+            
+            // NEW: Enhanced Multi-Day Planner Tab
+            EnhancedAIMealPlannerView()
+                .tabItem {
+                    Image(systemName: "calendar.badge.plus")
+                    Text("Planes Multi-Día")
+                }
+                .tag(4)
         }
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 1000, minHeight: 700) // Larger window for new features
     }
 }
 
-// MARK: - Food Search View
-struct FoodSearchView: View {
+// MARK: - Enhanced Food Search with Better Matching
+struct EnhancedFoodSearchView: View {
     @ObservedObject var usdaService: USDAFoodService
     @ObservedObject var foodManager: FoodDataManager
     
@@ -60,42 +92,78 @@ struct FoodSearchView: View {
     @State private var foods: [USDAFood] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var searchStrategy: SearchStrategy = .intelligent
+    
+    enum SearchStrategy: String, CaseIterable {
+        case direct = "Búsqueda Directa"
+        case intelligent = "Búsqueda Inteligente"
+        case ingredient_separation = "Separación de Ingredientes"
+    }
     
     var body: some View {
         VStack(spacing: 20) {
-            // Header
+            // Enhanced Header with Search Strategy
             VStack {
-                Text("🔍 Food Database Search")
+                Text("🔍 Búsqueda Avanzada USDA")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                 
-                Text("Search the USDA database for nutritional information")
+                Text("Búsqueda inteligente con separación automática de ingredientes")
                     .font(.headline)
                     .foregroundColor(.secondary)
+                
+                // Search Strategy Picker
+                Picker("Estrategia de Búsqueda", selection: $searchStrategy) {
+                    ForEach(SearchStrategy.allCases, id: \.self) { strategy in
+                        Text(strategy.rawValue).tag(strategy)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding()
             }
             
-            // Search Bar
+            // Enhanced Search Bar
             HStack {
-                TextField("Search for any food (e.g., 'salmon', 'quinoa', 'Greek yogurt')", text: $searchText)
+                TextField("Ej: 'pollo salteado con espinacas' o 'salmón a la parrilla'", text: $searchText)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .onSubmit {
-                        Task { await searchFoods() }
+                        Task { await performEnhancedSearch() }
                     }
                 
-                Button("Search") {
-                    Task { await searchFoods() }
+                Button("Buscar") {
+                    Task { await performEnhancedSearch() }
                 }
                 .disabled(isLoading || searchText.isEmpty)
                 .buttonStyle(.borderedProminent)
             }
             .padding()
             
-            // Status
+            // Search suggestions for compound foods
+            if searchStrategy == .ingredient_separation {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("💡 Ejemplos de búsquedas inteligentes:")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    
+                    Text("• 'pollo salteado en aceite' → se separa en 'pollo' + 'aceite de oliva'")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Text("• 'arroz con verduras' → se separa en 'arroz' + 'verduras mixtas'")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(Color.blue.opacity(0.05))
+                .cornerRadius(8)
+            }
+            
+            // Status and Results
             if isLoading {
                 HStack {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Searching USDA database...")
+                    Text("Buscando en base de datos USDA...")
                 }
             }
             
@@ -107,14 +175,13 @@ struct FoodSearchView: View {
                     .cornerRadius(8)
             }
             
-            // Results
             if !foods.isEmpty {
                 VStack {
-                    Text("Found \(foods.count) foods:")
+                    Text("Encontrados \(foods.count) alimentos:")
                         .font(.headline)
                     
                     List(foods) { food in
-                        FoodRowView(food: food, foodManager: foodManager)
+                        EnhancedFoodRowView(food: food, foodManager: foodManager)
                     }
                 }
             }
@@ -122,17 +189,23 @@ struct FoodSearchView: View {
         .padding()
     }
     
-    private func searchFoods() async {
+    private func performEnhancedSearch() async {
         isLoading = true
         errorMessage = nil
         foods = []
         
         do {
-            let searchResults = try await usdaService.searchFoods(query: searchText)
-            foods = searchResults
+            switch searchStrategy {
+            case .direct:
+                foods = try await usdaService.searchFoods(query: searchText)
+            case .intelligent:
+                foods = try await performIntelligentSearch(query: searchText)
+            case .ingredient_separation:
+                foods = try await performIngredientSeparationSearch(query: searchText)
+            }
             
             if foods.isEmpty {
-                errorMessage = "No foods found for '\(searchText)'. Try a more general term."
+                errorMessage = "No se encontraron alimentos para '\(searchText)'. Intenta términos más generales."
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -140,15 +213,118 @@ struct FoodSearchView: View {
         
         isLoading = false
     }
+    
+    private func performIntelligentSearch(query: String) async throws -> [USDAFood] {
+        // Multiple search strategies
+        var allResults: [USDAFood] = []
+        
+        // 1. Direct search
+        let directResults = try await usdaService.searchFoods(query: query)
+        allResults.append(contentsOf: directResults)
+        
+        // 2. Simplified search (remove cooking methods)
+        let simplifiedQuery = simplifySearchQuery(query)
+        if simplifiedQuery != query {
+            let simplifiedResults = try await usdaService.searchFoods(query: simplifiedQuery)
+            allResults.append(contentsOf: simplifiedResults)
+        }
+        
+        // 3. Category search
+        let categoryQuery = categorizeFoodQuery(query)
+        if !categoryQuery.isEmpty {
+            let categoryResults = try await usdaService.searchFoods(query: categoryQuery)
+            allResults.append(contentsOf: categoryResults)
+        }
+        
+        // Remove duplicates
+        let uniqueResults = Array(Set(allResults.map { $0.fdcId }))
+            .compactMap { fdcId in allResults.first { $0.fdcId == fdcId } }
+        
+        return Array(uniqueResults.prefix(15)) // Limit results
+    }
+    
+    private func performIngredientSeparationSearch(query: String) async throws -> [USDAFood] {
+        let ingredients = separateCompoundQuery(query)
+        var allResults: [USDAFood] = []
+        
+        for ingredient in ingredients {
+            let results = try await usdaService.searchFoods(query: ingredient)
+            allResults.append(contentsOf: results.prefix(5)) // 5 results per ingredient
+        }
+        
+        return Array(allResults.prefix(20))
+    }
+    
+    private func simplifySearchQuery(_ query: String) -> String {
+        let unwantedWords = ["salteado", "a la parrilla", "cocido", "fresco", "con", "en"]
+        var simplified = query.lowercased()
+        
+        for word in unwantedWords {
+            simplified = simplified.replacingOccurrences(of: word, with: "")
+        }
+        
+        return simplified.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    private func categorizeFoodQuery(_ query: String) -> String {
+        let lowerQuery = query.lowercased()
+        
+        if lowerQuery.contains("pollo") { return "chicken" }
+        if lowerQuery.contains("salmón") { return "salmon" }
+        if lowerQuery.contains("espinacas") { return "spinach" }
+        if lowerQuery.contains("arroz") { return "rice" }
+        
+        return ""
+    }
+    
+    private func separateCompoundQuery(_ query: String) -> [String] {
+        let lowerQuery = query.lowercased()
+        var ingredients: [String] = []
+        
+        // Detect patterns and separate
+        if lowerQuery.contains("salteado") || lowerQuery.contains("con aceite") {
+            // Extract base ingredient
+            if lowerQuery.contains("pollo") { ingredients.append("chicken") }
+            if lowerQuery.contains("espinacas") { ingredients.append("spinach") }
+            // Add oil
+            ingredients.append("olive oil")
+        } else if lowerQuery.contains("con") {
+            // Split by "con"
+            let parts = lowerQuery.components(separatedBy: "con")
+            for part in parts {
+                let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    ingredients.append(trimmed)
+                }
+            }
+        } else {
+            ingredients.append(query)
+        }
+        
+        return ingredients
+    }
 }
 
-// MARK: - Updated Food Row View (Fixed)
-struct FoodRowView: View {
+// MARK: - Enhanced Food Row with Better Portion Display
+struct EnhancedFoodRowView: View {
     let food: USDAFood
     @ObservedObject var foodManager: FoodDataManager
     
     @State private var showingDetail = false
     @State private var isSaved = false
+    @State private var selectedPortion: FoodPortion
+    
+    init(food: USDAFood, foodManager: FoodDataManager) {
+        self.food = food
+        self.foodManager = foodManager
+        self._selectedPortion = State(initialValue: food.availablePortions.first ?? FoodPortion(
+            id: "100g",
+            description: "100g",
+            gramWeight: 100,
+            modifier: "per 100g",
+            isDefault: true
+        ))
+    }
     
     var body: some View {
         HStack {
@@ -157,16 +333,26 @@ struct FoodRowView: View {
                     .font(.headline)
                     .lineLimit(2)
                 
-                // Nutrition summary
+                // Enhanced nutrition display with selected portion
+                let currentNutrients = selectedPortion.calculateNutrients(from: food)
                 HStack {
-                    NutrientBadge(value: Int(food.calories), unit: "cal", color: .blue)
-                    NutrientBadge(value: Int(food.protein), unit: "g protein", color: .green)
-                    NutrientBadge(value: Int(food.carbs), unit: "g carbs", color: .orange)
-                    NutrientBadge(value: Int(food.fat), unit: "g fat", color: .purple)
+                    NutrientBadge(value: Int(currentNutrients.calories), unit: "cal", color: .blue)
+                    NutrientBadge(value: Int(currentNutrients.protein), unit: "g proteína", color: .green)
+                    NutrientBadge(value: Int(currentNutrients.carbs), unit: "g carbs", color: .orange)
+                    NutrientBadge(value: Int(currentNutrients.fat), unit: "g grasa", color: .purple)
                 }
                 
+                // Portion selector
+                Picker("Porción", selection: $selectedPortion) {
+                    ForEach(food.availablePortions, id: \.id) { portion in
+                        Text(portion.description).tag(portion)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .font(.caption)
+                
                 if let brand = food.brandOwner {
-                    Text("Brand: \(brand)")
+                    Text("Marca: \(brand)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -192,7 +378,7 @@ struct FoodRowView: View {
         }
         .padding(.vertical, 4)
         .sheet(isPresented: $showingDetail) {
-            USDAFoodDetailView(food: food) // Changed this to use USDA food
+            USDAFoodDetailView(food: food)
         }
     }
     
@@ -200,9 +386,8 @@ struct FoodRowView: View {
         foodManager.saveFood(from: food)
         isSaved = true
         
-        // Visual feedback
         withAnimation(.easeInOut(duration: 0.3)) {
-            // You could add some visual feedback here
+            // Visual feedback
         }
     }
 }
@@ -813,7 +998,7 @@ struct USDAFoodDetailView: View {
             let today = Calendar.current.startOfDay(for: Date())
             let mealRequest: NSFetchRequest<Meal> = Meal.fetchRequest()
             mealRequest.predicate = NSPredicate(format: "patient == %@ AND mealType == %@ AND date >= %@ AND date < %@",
-                                               patient, selectedMealType.rawValue, today as NSDate, Calendar.current.date(byAdding: .day, value: 1, to: today)! as NSDate)
+                                                patient, selectedMealType.rawValue, today as NSDate, Calendar.current.date(byAdding: .day, value: 1, to: today)! as NSDate)
             
             let existingMeals = try viewContext.fetch(mealRequest)
             let meal: Meal
@@ -887,7 +1072,7 @@ struct QuickPatientCreator: View {
             }
             .padding()
             .navigationTitle("New Patient")
-//            .navigationBarTitleDisplayMode(.inline)
+            //            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -974,6 +1159,6 @@ struct NutritionFactsSection: View {
 
 
 #Preview {
-    ContentView()
+    UpdatedContentView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
