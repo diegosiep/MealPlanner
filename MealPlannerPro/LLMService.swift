@@ -51,7 +51,7 @@ class LLMService: ObservableObject {
                     await MainActor.run {
                         lastError = nil // Clear any previous errors
                     }
-                    print("🎯 Claude generated meal plan with \(mealPlan.suggestedFoods.count) foods")
+                    print("🎯 Claude generated meal pldan with \(mealPlan.suggestedFoods.count) foods")
                     print("📊 Accuracy score: \(String(format: "%.1f", mealPlan.nutritionAccuracy.overall * 100))%")
                 }
                 
