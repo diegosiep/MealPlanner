@@ -225,6 +225,7 @@ class USDAVerifiedMealPlanningService: ObservableObject {
 // Enhanced USDA Verification with Intelligent Ingredient Separation
 extension USDAVerifiedMealPlanningService {
     
+    
     // MARK: - Enhanced Food Verification with Ingredient Separation
     private func verifyFoodWithUSDAEnhanced(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
         // Step 1: Check if this is a compound food that needs separation
@@ -238,6 +239,93 @@ extension USDAVerifiedMealPlanningService {
             return try await verifySingleIngredient(aiFood: aiFood)
         }
     }
+    
+    // MARK: - Compound Food Verification
+        private func verifyCompoundFood(aiFood: SuggestedFood, ingredients: [SuggestedFood]) async throws -> VerifiedSuggestedFood {
+            var verifiedIngredients: [VerifiedSuggestedFood] = []
+            var totalNutrition = EstimatedNutrition(calories: 0, protein: 0, carbs: 0, fat: 0)
+            
+            // Verify each separated ingredient
+            for ingredient in ingredients {
+                let verifiedIngredient = try await verifySingleIngredient(aiFood: ingredient)
+                verifiedIngredients.append(verifiedIngredient)
+                
+                // Accumulate nutrition
+                totalNutrition = EstimatedNutrition(
+                    calories: totalNutrition.calories + verifiedIngredient.verifiedNutrition.calories,
+                    protein: totalNutrition.protein + verifiedIngredient.verifiedNutrition.protein,
+                    carbs: totalNutrition.carbs + verifiedIngredient.verifiedNutrition.carbs,
+                    fat: totalNutrition.fat + verifiedIngredient.verifiedNutrition.fat
+                )
+            }
+            
+            // Calculate overall confidence
+            let overallConfidence = verifiedIngredients.reduce(0.0) { $0 + $1.matchConfidence } / Double(verifiedIngredients.count)
+            let allVerified = verifiedIngredients.allSatisfy { $0.isVerified }
+            
+            // Create compound verification notes
+            let verificationNotes = """
+            Compound food separated into \(ingredients.count) ingredients:
+            \(verifiedIngredients.map { "• \($0.originalAISuggestion.name): \($0.isVerified ? "Verified" : "Estimated")" }.joined(separator: "\n"))
+            """
+            
+            return VerifiedSuggestedFood(
+                originalAISuggestion: aiFood,
+                matchedUSDAFood: nil, // Compound foods don't have single USDA match
+                verifiedNutrition: totalNutrition,
+                matchConfidence: overallConfidence,
+                isVerified: allVerified,
+                verificationNotes: verificationNotes
+            )
+        }
+        
+        // MARK: - Pattern-Based Separation
+        private func separateByPattern(_ aiFood: SuggestedFood, pattern: String, components: [String]) -> [SuggestedFood] {
+            let foodName = aiFood.name.lowercased()
+            let parts = foodName.components(separatedBy: pattern)
+            
+            guard parts.count >= 2 else { return [aiFood] }
+            
+            var separatedFoods: [SuggestedFood] = []
+            
+            // Extract base ingredient
+            let baseIngredientName = parts[0].trimmingCharacters(in: .whitespaces)
+            let baseWeight = aiFood.gramWeight * 0.85 // Base is 85% of weight
+            
+            separatedFoods.append(SuggestedFood(
+                name: baseIngredientName.capitalized,
+                portionDescription: "\(Int(baseWeight))g",
+                gramWeight: baseWeight,
+                estimatedNutrition: EstimatedNutrition(
+                    calories: aiFood.estimatedNutrition.calories * 0.8,
+                    protein: aiFood.estimatedNutrition.protein * 0.9,
+                    carbs: aiFood.estimatedNutrition.carbs * 0.9,
+                    fat: aiFood.estimatedNutrition.fat * 0.3
+                )
+            ))
+            
+            // Add cooking medium (oil, etc.) if appropriate
+            if pattern.contains("sautéed") || pattern.contains("cooked") || pattern.contains("grilled") {
+                let oilWeight = aiFood.gramWeight * 0.15 // Oil is 15% of weight
+                
+                separatedFoods.append(SuggestedFood(
+                    name: "Oil, olive, salad or cooking",
+                    portionDescription: "\(Int(oilWeight))g",
+                    gramWeight: oilWeight,
+                    estimatedNutrition: EstimatedNutrition(
+                        calories: aiFood.estimatedNutrition.calories * 0.2,
+                        protein: 0,
+                        carbs: 0,
+                        fat: aiFood.estimatedNutrition.fat * 0.7
+                    )
+                ))
+            }
+            
+            return separatedFoods
+        }
+        
+        // MARK: - Enhanced Single Ingredient Verification
+        private func verifySingleIngredient(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
     
     // MARK: - Compound Food Separation
     private func separateCompoundFood(_ aiFood: SuggestedFood) -> [SuggestedFood] {
