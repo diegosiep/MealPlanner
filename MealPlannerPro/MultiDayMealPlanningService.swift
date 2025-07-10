@@ -375,11 +375,11 @@ struct SpanishStrings: LocalizedStrings {
 
 // MARK: - Portion Preferences
 struct PortionPreferences {
-    var preferMetric: Bool // grams vs ounces
-    let preferLargePortion: Bool
-    let customPortionMultiplier: Double // 0.5 to 2.0
-    let avoidedFoodSizes: [String] // e.g., ["large", "jumbo"]
-    let preferredMeasurements: [String] // e.g., ["cup", "tablespoon", "piece"]
+    var preferMetric: Bool // Changed to var
+    var preferLargePortion: Bool // Changed to var
+    var customPortionMultiplier: Double // Changed to var
+    let avoidedFoodSizes: [String] // Keep as let since it's an array
+    let preferredMeasurements: [String] // Keep as let since it's an array
 }
 
 // MARK: - Enhanced Multi-Day Planning Service

@@ -10,6 +10,7 @@ import UIKit
 import AppKit
 #endif
 
+
 // MARK: - Enhanced Multi-Day Meal Planner View
 struct EnhancedAIMealPlannerView: View {
     @StateObject private var multiDayService = MultiDayMealPlanningService()
@@ -30,7 +31,7 @@ struct EnhancedAIMealPlannerView: View {
     @State private var dietaryRestrictions: [String] = []
     @State private var medicalConditions: [String] = []
     
-    // Portion preferences
+    // Portion preferences (fixed structure)
     @State private var portionPreferences = PortionPreferences(
         preferMetric: true,
         preferLargePortion: false,
@@ -97,6 +98,7 @@ struct EnhancedAIMealPlannerView: View {
     }
     
     // MARK: - Setup View
+    @ViewBuilder
     private var setupView: some View {
         VStack(spacing: 30) {
             // Header
@@ -130,6 +132,7 @@ struct EnhancedAIMealPlannerView: View {
     }
     
     // MARK: - Results View
+    @ViewBuilder
     private var resultsView: some View {
         Group {
             if let plan = currentMultiDayPlan {
@@ -162,6 +165,7 @@ struct EnhancedAIMealPlannerView: View {
     }
     
     // MARK: - Export View
+    @ViewBuilder
     private var exportView: some View {
         Group {
             if let plan = currentMultiDayPlan {
@@ -196,6 +200,7 @@ struct EnhancedAIMealPlannerView: View {
     }
     
     // MARK: - Section Views
+    @ViewBuilder
     private var patientAndDurationSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("👤 Paciente y Duración")
@@ -263,6 +268,7 @@ struct EnhancedAIMealPlannerView: View {
         .cornerRadius(15)
     }
     
+    @ViewBuilder
     private var languageAndMealsSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("🌍 Idioma y Comidas")
@@ -322,6 +328,7 @@ struct EnhancedAIMealPlannerView: View {
         .cornerRadius(15)
     }
     
+    @ViewBuilder
     private var cuisineAndDietarySection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("🍽️ Preferencias Culinarias")
@@ -418,6 +425,7 @@ struct EnhancedAIMealPlannerView: View {
         .cornerRadius(15)
     }
     
+    @ViewBuilder
     private var portionPreferencesSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("⚖️ Preferencias de Porciones")
@@ -462,6 +470,7 @@ struct EnhancedAIMealPlannerView: View {
         .cornerRadius(15)
     }
     
+    @ViewBuilder
     private var generateButton: some View {
         Button(action: generateMultiDayPlan) {
             HStack {
@@ -617,6 +626,12 @@ struct MultiDayPlanResultsView: View {
     let plan: MultiDayMealPlan
     let onRegenerateDay: (Int) -> Void
     
+    private var dateRangeText: String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        return "\(dateFormatter.string(from: plan.startDate)) - \(dateFormatter.string(from: plan.endDate))"
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Plan Header
@@ -625,11 +640,11 @@ struct MultiDayPlanResultsView: View {
                     .font(.title)
                     .fontWeight(.bold)
                 
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateStyle = .medium
-                Text("\(dateFormatter.string(from: plan.startDate)) - \(dateFormatter.string(from: plan.endDate))")
+                Text(dateRangeText)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+
+}
                 
                 // Overall Summary
                 HStack {
@@ -650,7 +665,6 @@ struct MultiDayPlanResultsView: View {
             }
         }
     }
-}
 
 struct SummaryCard: View {
     let title: String
@@ -869,6 +883,7 @@ struct PDFViewerSheet: View {
                 }
             }
             .navigationTitle("Plan de Comidas")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -882,6 +897,20 @@ struct PDFViewerSheet: View {
                     }
                 }
             }
+            #else
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button("Cerrar") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button("Compartir") {
+                        sharePDF()
+                    }
+                }
+            }
+            #endif
         }
     }
     

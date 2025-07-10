@@ -53,7 +53,7 @@ class USDAVerifiedMealPlanningService: ObservableObject {
         for aiFood in aiSuggestion.suggestedFoods {
             print("🔍 Verifying: \(aiFood.name)")
             
-            let verifiedFood = try await verifyFoodWithUSDA(aiFood: aiFood)
+            let verifiedFood = try await verifyFoodWithUSDAEnhanced(aiFood: aiFood)
             verifiedFoods.append(verifiedFood)
             
             // Add to totals (create new instance instead of mutating)
@@ -81,151 +81,6 @@ class USDAVerifiedMealPlanningService: ObservableObject {
         )
     }
     
-    // MARK: - Individual Food Verification
-    private func verifyFoodWithUSDA(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
-        // Search USDA database for the suggested food
-        let searchResults = try await usdaService.searchFoods(query: aiFood.name)
-        
-        // Find the best matching food
-        let bestMatch = findBestMatch(aiFood: aiFood, usdaResults: searchResults)
-        
-        if let usdaFood = bestMatch {
-            print("✅ Found USDA match: \(usdaFood.description)")
-            
-            // Calculate nutrition for the AI-suggested portion using USDA data
-            let adjustedPortion = calculateUSDAPortionNutrition(
-                usdaFood: usdaFood,
-                targetWeight: aiFood.gramWeight
-            )
-            
-            return VerifiedSuggestedFood(
-                originalAISuggestion: aiFood,
-                matchedUSDAFood: usdaFood,
-                verifiedNutrition: adjustedPortion,
-                matchConfidence: calculateMatchConfidence(aiFood: aiFood, usdaFood: usdaFood),
-                isVerified: true,
-                verificationNotes: "Verified with USDA database: \(usdaFood.description)"
-            )
-            
-        } else {
-            print("⚠️ No USDA match found for: \(aiFood.name)")
-            
-            // Use AI estimate but mark as unverified
-            return VerifiedSuggestedFood(
-                originalAISuggestion: aiFood,
-                matchedUSDAFood: nil,
-                verifiedNutrition: aiFood.estimatedNutrition,
-                matchConfidence: 0.0,
-                isVerified: false,
-                verificationNotes: "Could not verify with USDA database. Using AI estimate."
-            )
-        }
-    }
-    
-    // MARK: - Food Matching Algorithm
-    private func findBestMatch(aiFood: SuggestedFood, usdaResults: [USDAFood]) -> USDAFood? {
-        guard !usdaResults.isEmpty else { return nil }
-        
-        let aiName = aiFood.name.lowercased()
-        var bestMatch: USDAFood?
-        var bestScore = 0.0
-        
-        for usdaFood in usdaResults {
-            let usdaName = usdaFood.description.lowercased()
-            let score = calculateNameSimilarity(aiName: aiName, usdaName: usdaName)
-            
-            // Boost score for foods with similar calories
-            let calorieRatio = abs(usdaFood.calories - aiFood.estimatedNutrition.calories) / max(usdaFood.calories, aiFood.estimatedNutrition.calories)
-            let calorieBoost = max(0, 1.0 - calorieRatio) * 0.3
-            
-            let totalScore = score + calorieBoost
-            
-            if totalScore > bestScore {
-                bestScore = totalScore
-                bestMatch = usdaFood
-            }
-        }
-        
-        // Only return matches with reasonable confidence
-        return bestScore > 0.6 ? bestMatch : nil
-    }
-    
-    // MARK: - Helper Functions
-    private func calculateNameSimilarity(aiName: String, usdaName: String) -> Double {
-        // Create a character set with whitespaces and common punctuation
-        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".,!?;:()[]{}\"'-"))
-        
-        let aiWords = Set(aiName.components(separatedBy: separators).filter { !$0.isEmpty })
-        let usdaWords = Set(usdaName.components(separatedBy: separators).filter { !$0.isEmpty })
-        
-        let intersection = aiWords.intersection(usdaWords)
-        let union = aiWords.union(usdaWords)
-        
-        return union.isEmpty ? 0.0 : Double(intersection.count) / Double(union.count)
-    }
-    
-    private func calculateUSDAPortionNutrition(usdaFood: USDAFood, targetWeight: Double) -> EstimatedNutrition {
-        let multiplier = targetWeight / 100.0 // USDA data is per 100g
-        
-        return EstimatedNutrition(
-            calories: usdaFood.calories * multiplier,
-            protein: usdaFood.protein * multiplier,
-            carbs: usdaFood.carbs * multiplier,
-            fat: usdaFood.fat * multiplier
-        )
-    }
-    
-    private func calculateMatchConfidence(aiFood: SuggestedFood, usdaFood: USDAFood) -> Double {
-        let nameSimilarity = calculateNameSimilarity(
-            aiName: aiFood.name.lowercased(),
-            usdaName: usdaFood.description.lowercased()
-        )
-        
-        let calorieAccuracy = 1.0 - abs(usdaFood.calories - aiFood.estimatedNutrition.calories) / max(usdaFood.calories, aiFood.estimatedNutrition.calories)
-        
-        return (nameSimilarity + calorieAccuracy) / 2.0
-    }
-    
-    private func calculateAccuracy(verified: EstimatedNutrition, target: MealPlanRequest) -> DetailedAccuracy {
-        let calorieAccuracy = 1.0 - abs(verified.calories - Double(target.targetCalories)) / Double(target.targetCalories)
-        let proteinAccuracy = 1.0 - abs(verified.protein - target.targetProtein) / target.targetProtein
-        let carbAccuracy = 1.0 - abs(verified.carbs - target.targetCarbs) / target.targetCarbs
-        let fatAccuracy = 1.0 - abs(verified.fat - target.targetFat) / target.targetFat
-        
-        return DetailedAccuracy(
-            overall: (calorieAccuracy + proteinAccuracy + carbAccuracy + fatAccuracy) / 4.0,
-            calories: calorieAccuracy,
-            protein: proteinAccuracy,
-            carbs: carbAccuracy,
-            fat: fatAccuracy
-        )
-    }
-    
-    private func generateVerificationNotes(verifiedFoods: [VerifiedSuggestedFood], accuracy: DetailedAccuracy) -> String {
-        let verifiedCount = verifiedFoods.filter { $0.isVerified }.count
-        let totalCount = verifiedFoods.count
-        
-        var notes = "USDA Verification Results:\n"
-        notes += "• \(verifiedCount)/\(totalCount) foods verified with USDA database\n"
-        notes += "• Overall accuracy: \(String(format: "%.1f", accuracy.overall * 100))%\n"
-        
-        if accuracy.overall < 0.8 {
-            notes += "• ⚠️ Consider adjusting portions for better target matching\n"
-        }
-        
-        for food in verifiedFoods where !food.isVerified {
-            notes += "• ⚠️ Could not verify: \(food.originalAISuggestion.name)\n"
-        }
-        
-        return notes
-    }
-}
-
-
-// Enhanced USDA Verification with Intelligent Ingredient Separation
-extension USDAVerifiedMealPlanningService {
-    
-    
     // MARK: - Enhanced Food Verification with Ingredient Separation
     private func verifyFoodWithUSDAEnhanced(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
         // Step 1: Check if this is a compound food that needs separation
@@ -241,91 +96,43 @@ extension USDAVerifiedMealPlanningService {
     }
     
     // MARK: - Compound Food Verification
-        private func verifyCompoundFood(aiFood: SuggestedFood, ingredients: [SuggestedFood]) async throws -> VerifiedSuggestedFood {
-            var verifiedIngredients: [VerifiedSuggestedFood] = []
-            var totalNutrition = EstimatedNutrition(calories: 0, protein: 0, carbs: 0, fat: 0)
+    private func verifyCompoundFood(aiFood: SuggestedFood, ingredients: [SuggestedFood]) async throws -> VerifiedSuggestedFood {
+        var verifiedIngredients: [VerifiedSuggestedFood] = []
+        var totalNutrition = EstimatedNutrition(calories: 0, protein: 0, carbs: 0, fat: 0)
+        
+        // Verify each separated ingredient
+        for ingredient in ingredients {
+            let verifiedIngredient = try await verifySingleIngredient(aiFood: ingredient)
+            verifiedIngredients.append(verifiedIngredient)
             
-            // Verify each separated ingredient
-            for ingredient in ingredients {
-                let verifiedIngredient = try await verifySingleIngredient(aiFood: ingredient)
-                verifiedIngredients.append(verifiedIngredient)
-                
-                // Accumulate nutrition
-                totalNutrition = EstimatedNutrition(
-                    calories: totalNutrition.calories + verifiedIngredient.verifiedNutrition.calories,
-                    protein: totalNutrition.protein + verifiedIngredient.verifiedNutrition.protein,
-                    carbs: totalNutrition.carbs + verifiedIngredient.verifiedNutrition.carbs,
-                    fat: totalNutrition.fat + verifiedIngredient.verifiedNutrition.fat
-                )
-            }
-            
-            // Calculate overall confidence
-            let overallConfidence = verifiedIngredients.reduce(0.0) { $0 + $1.matchConfidence } / Double(verifiedIngredients.count)
-            let allVerified = verifiedIngredients.allSatisfy { $0.isVerified }
-            
-            // Create compound verification notes
-            let verificationNotes = """
-            Compound food separated into \(ingredients.count) ingredients:
-            \(verifiedIngredients.map { "• \($0.originalAISuggestion.name): \($0.isVerified ? "Verified" : "Estimated")" }.joined(separator: "\n"))
-            """
-            
-            return VerifiedSuggestedFood(
-                originalAISuggestion: aiFood,
-                matchedUSDAFood: nil, // Compound foods don't have single USDA match
-                verifiedNutrition: totalNutrition,
-                matchConfidence: overallConfidence,
-                isVerified: allVerified,
-                verificationNotes: verificationNotes
+            // Accumulate nutrition
+            totalNutrition = EstimatedNutrition(
+                calories: totalNutrition.calories + verifiedIngredient.verifiedNutrition.calories,
+                protein: totalNutrition.protein + verifiedIngredient.verifiedNutrition.protein,
+                carbs: totalNutrition.carbs + verifiedIngredient.verifiedNutrition.carbs,
+                fat: totalNutrition.fat + verifiedIngredient.verifiedNutrition.fat
             )
         }
         
-        // MARK: - Pattern-Based Separation
-        private func separateByPattern(_ aiFood: SuggestedFood, pattern: String, components: [String]) -> [SuggestedFood] {
-            let foodName = aiFood.name.lowercased()
-            let parts = foodName.components(separatedBy: pattern)
-            
-            guard parts.count >= 2 else { return [aiFood] }
-            
-            var separatedFoods: [SuggestedFood] = []
-            
-            // Extract base ingredient
-            let baseIngredientName = parts[0].trimmingCharacters(in: .whitespaces)
-            let baseWeight = aiFood.gramWeight * 0.85 // Base is 85% of weight
-            
-            separatedFoods.append(SuggestedFood(
-                name: baseIngredientName.capitalized,
-                portionDescription: "\(Int(baseWeight))g",
-                gramWeight: baseWeight,
-                estimatedNutrition: EstimatedNutrition(
-                    calories: aiFood.estimatedNutrition.calories * 0.8,
-                    protein: aiFood.estimatedNutrition.protein * 0.9,
-                    carbs: aiFood.estimatedNutrition.carbs * 0.9,
-                    fat: aiFood.estimatedNutrition.fat * 0.3
-                )
-            ))
-            
-            // Add cooking medium (oil, etc.) if appropriate
-            if pattern.contains("sautéed") || pattern.contains("cooked") || pattern.contains("grilled") {
-                let oilWeight = aiFood.gramWeight * 0.15 // Oil is 15% of weight
-                
-                separatedFoods.append(SuggestedFood(
-                    name: "Oil, olive, salad or cooking",
-                    portionDescription: "\(Int(oilWeight))g",
-                    gramWeight: oilWeight,
-                    estimatedNutrition: EstimatedNutrition(
-                        calories: aiFood.estimatedNutrition.calories * 0.2,
-                        protein: 0,
-                        carbs: 0,
-                        fat: aiFood.estimatedNutrition.fat * 0.7
-                    )
-                ))
-            }
-            
-            return separatedFoods
-        }
+        // Calculate overall confidence
+        let overallConfidence = verifiedIngredients.reduce(0.0) { $0 + $1.matchConfidence } / Double(verifiedIngredients.count)
+        let allVerified = verifiedIngredients.allSatisfy { $0.isVerified }
         
-        // MARK: - Enhanced Single Ingredient Verification
-        private func verifySingleIngredient(aiFood: SuggestedFood) async throws -> VerifiedSuggestedFood {
+        // Create compound verification notes
+        let verificationNotes = """
+        Compound food separated into \(ingredients.count) ingredients:
+        \(verifiedIngredients.map { "• \($0.originalAISuggestion.name): \($0.isVerified ? "Verified" : "Estimated")" }.joined(separator: "\n"))
+        """
+        
+        return VerifiedSuggestedFood(
+            originalAISuggestion: aiFood,
+            matchedUSDAFood: nil, // Compound foods don't have single USDA match
+            verifiedNutrition: totalNutrition,
+            matchConfidence: overallConfidence,
+            isVerified: allVerified,
+            verificationNotes: verificationNotes
+        )
+    }
     
     // MARK: - Compound Food Separation
     private func separateCompoundFood(_ aiFood: SuggestedFood) -> [SuggestedFood] {
@@ -352,6 +159,51 @@ extension USDAVerifiedMealPlanningService {
         }
         
         return [aiFood] // Return as single ingredient if no separation needed
+    }
+    
+    // MARK: - Pattern-Based Separation
+    private func separateByPattern(_ aiFood: SuggestedFood, pattern: String, components: [String]) -> [SuggestedFood] {
+        let foodName = aiFood.name.lowercased()
+        let parts = foodName.components(separatedBy: pattern)
+        
+        guard parts.count >= 2 else { return [aiFood] }
+        
+        var separatedFoods: [SuggestedFood] = []
+        
+        // Extract base ingredient
+        let baseIngredientName = parts[0].trimmingCharacters(in: .whitespaces)
+        let baseWeight = aiFood.gramWeight * 0.85 // Base is 85% of weight
+        
+        separatedFoods.append(SuggestedFood(
+            name: baseIngredientName.capitalized,
+            portionDescription: "\(Int(baseWeight))g",
+            gramWeight: baseWeight,
+            estimatedNutrition: EstimatedNutrition(
+                calories: aiFood.estimatedNutrition.calories * 0.8,
+                protein: aiFood.estimatedNutrition.protein * 0.9,
+                carbs: aiFood.estimatedNutrition.carbs * 0.9,
+                fat: aiFood.estimatedNutrition.fat * 0.3
+            )
+        ))
+        
+        // Add cooking medium (oil, etc.) if appropriate
+        if pattern.contains("sautéed") || pattern.contains("cooked") || pattern.contains("grilled") {
+            let oilWeight = aiFood.gramWeight * 0.15 // Oil is 15% of weight
+            
+            separatedFoods.append(SuggestedFood(
+                name: "Oil, olive, salad or cooking",
+                portionDescription: "\(Int(oilWeight))g",
+                gramWeight: oilWeight,
+                estimatedNutrition: EstimatedNutrition(
+                    calories: aiFood.estimatedNutrition.calories * 0.2,
+                    protein: 0,
+                    carbs: 0,
+                    fat: aiFood.estimatedNutrition.fat * 0.7
+                )
+            ))
+        }
+        
+        return separatedFoods
     }
     
     private func isCompoundFood(_ foodName: String) -> Bool {
@@ -592,5 +444,64 @@ extension USDAVerifiedMealPlanningService {
     
     private func calculateEnhancedMatchConfidence(aiFood: SuggestedFood, usdaFood: USDAFood) -> Double {
         return calculateEnhancedSimilarityScore(aiFood: aiFood, usdaFood: usdaFood)
+    }
+    
+    // MARK: - Basic Helper Functions
+    private func calculateNameSimilarity(aiName: String, usdaName: String) -> Double {
+        // Create a character set with whitespaces and common punctuation
+        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".,!?;:()[]{}\"'-"))
+        
+        let aiWords = Set(aiName.components(separatedBy: separators).filter { !$0.isEmpty })
+        let usdaWords = Set(usdaName.components(separatedBy: separators).filter { !$0.isEmpty })
+        
+        let intersection = aiWords.intersection(usdaWords)
+        let union = aiWords.union(usdaWords)
+        
+        return union.isEmpty ? 0.0 : Double(intersection.count) / Double(union.count)
+    }
+    
+    private func calculateUSDAPortionNutrition(usdaFood: USDAFood, targetWeight: Double) -> EstimatedNutrition {
+        let multiplier = targetWeight / 100.0 // USDA data is per 100g
+        
+        return EstimatedNutrition(
+            calories: usdaFood.calories * multiplier,
+            protein: usdaFood.protein * multiplier,
+            carbs: usdaFood.carbs * multiplier,
+            fat: usdaFood.fat * multiplier
+        )
+    }
+    
+    private func calculateAccuracy(verified: EstimatedNutrition, target: MealPlanRequest) -> DetailedAccuracy {
+        let calorieAccuracy = 1.0 - abs(verified.calories - Double(target.targetCalories)) / Double(target.targetCalories)
+        let proteinAccuracy = 1.0 - abs(verified.protein - target.targetProtein) / target.targetProtein
+        let carbAccuracy = 1.0 - abs(verified.carbs - target.targetCarbs) / target.targetCarbs
+        let fatAccuracy = 1.0 - abs(verified.fat - target.targetFat) / target.targetFat
+        
+        return DetailedAccuracy(
+            overall: (calorieAccuracy + proteinAccuracy + carbAccuracy + fatAccuracy) / 4.0,
+            calories: calorieAccuracy,
+            protein: proteinAccuracy,
+            carbs: carbAccuracy,
+            fat: fatAccuracy
+        )
+    }
+    
+    private func generateVerificationNotes(verifiedFoods: [VerifiedSuggestedFood], accuracy: DetailedAccuracy) -> String {
+        let verifiedCount = verifiedFoods.filter { $0.isVerified }.count
+        let totalCount = verifiedFoods.count
+        
+        var notes = "USDA Verification Results:\n"
+        notes += "• \(verifiedCount)/\(totalCount) foods verified with USDA database\n"
+        notes += "• Overall accuracy: \(String(format: "%.1f", accuracy.overall * 100))%\n"
+        
+        if accuracy.overall < 0.8 {
+            notes += "• ⚠️ Consider adjusting portions for better target matching\n"
+        }
+        
+        for food in verifiedFoods where !food.isVerified {
+            notes += "• ⚠️ Could not verify: \(food.originalAISuggestion.name)\n"
+        }
+        
+        return notes
     }
 }
