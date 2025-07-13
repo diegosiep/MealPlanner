@@ -1,0 +1,544 @@
+{
+  "source": "/Volumes/Macintosh HD/Users/diegosierra/Documents/MealPlanner/MealPlannerPro/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Buscar Alimentos",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 46
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mis Alimentos",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Planes Básicos",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 62
+        }
+      },
+      {
+        "comment": "",
+        "key": "Asistente IA",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 70
+        }
+      },
+      {
+        "comment": "",
+        "key": "Planes Multi-Día",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Error: %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "🔍 Búsqueda Avanzada USDA",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "Búsqueda inteligente con separación automática de ingredientes",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 111
+        }
+      },
+      {
+        "comment": "",
+        "key": "Estrategia de Búsqueda",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ej: 'pollo salteado con espinacas' o 'salmón a la parrilla'",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 127
+        }
+      },
+      {
+        "comment": "",
+        "key": "Buscar",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 133
+        }
+      },
+      {
+        "comment": "",
+        "key": "💡 Ejemplos de búsquedas inteligentes:",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 144
+        }
+      },
+      {
+        "comment": "",
+        "key": "• 'pollo salteado en aceite' → se separa en 'pollo' + 'aceite de oliva'",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 148
+        }
+      },
+      {
+        "comment": "",
+        "key": "• 'arroz con verduras' → se separa en 'arroz' + 'verduras mixtas'",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 152
+        }
+      },
+      {
+        "comment": "",
+        "key": "Buscando en base de datos USDA...",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "Encontrados %lld alimentos:",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 180
+        }
+      },
+      {
+        "comment": "",
+        "key": "Marca: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 355
+        }
+      },
+      {
+        "comment": "",
+        "key": "Porción",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 346
+        }
+      },
+      {
+        "comment": "",
+        "key": "📊 Detailed Nutrition",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 403
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open Complete Analysis",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 413
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld %@",
+        "location": {
+          "startingColumn": 14,
+          "startingLine": 437
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start searching for foods and save them to build your library!",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 498
+        }
+      },
+      {
+        "comment": "",
+        "key": "No saved foods yet",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 496
+        }
+      },
+      {
+        "comment": "",
+        "key": "💖 My Food Library",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 466
+        }
+      },
+      {
+        "comment": "",
+        "key": "Your personal collection of saved foods",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 470
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search your saved foods...",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 488
+        }
+      },
+      {
+        "comment": "",
+        "key": "Brand: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 570
+        }
+      },
+      {
+        "comment": "",
+        "key": "Added %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 575
+        }
+      },
+      {
+        "comment": "",
+        "key": "by %@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 633
+        }
+      },
+      {
+        "comment": "",
+        "key": "USDA ID: %d",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 638
+        }
+      },
+      {
+        "comment": "",
+        "key": "Nutrition Facts",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 647
+        }
+      },
+      {
+        "comment": "",
+        "key": "Per %lld %@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 651
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open Advanced Analysis",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 670
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@%@",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 703
+        }
+      },
+      {
+        "comment": "",
+        "key": "Added to Meal Plan!",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 971
+        }
+      },
+      {
+        "comment": "",
+        "key": "by %@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 756
+        }
+      },
+      {
+        "comment": "",
+        "key": "USDA ID: %lld",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 762
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 768
+        }
+      },
+      {
+        "comment": "",
+        "key": "👥 Add to Patient Plan",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 790
+        }
+      },
+      {
+        "comment": "",
+        "key": "Select Patient:",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 797
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create First Patient",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 802
+        }
+      },
+      {
+        "comment": "",
+        "key": "Patient",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 809
+        }
+      },
+      {
+        "comment": "",
+        "key": "Select a patient...",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 810
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ %@",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 812
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to Meal:",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 825
+        }
+      },
+      {
+        "comment": "",
+        "key": "Will Add:",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 850
+        }
+      },
+      {
+        "comment": "",
+        "key": "of %@",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 859
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld cal",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 867
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lldg",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 871
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to %@'s %@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 885
+        }
+      },
+      {
+        "comment": "",
+        "key": "📊 Detailed Nutrition Facts",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 904
+        }
+      },
+      {
+        "comment": "",
+        "key": "Per %@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 908
+        }
+      },
+      {
+        "comment": "",
+        "key": "All Available Nutrients",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 929
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ %@",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 946
+        }
+      },
+      {
+        "comment": "",
+        "key": "—",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 950
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 972
+        }
+      },
+      {
+        "comment": "",
+        "key": "Successfully added %@ to %@'s %@!",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 974
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Patient",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1074
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create New Patient",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1050
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create Patient",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1065
+        }
+      },
+      {
+        "comment": "",
+        "key": "First Name:",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1055
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last Name:",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1059
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enter first name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 1056
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enter last name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 1060
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 1078
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@%@",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1119
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ %@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1146
+        }
+      }
+    ]
+  },
+  "version": 1
+}

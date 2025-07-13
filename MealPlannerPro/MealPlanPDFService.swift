@@ -7,6 +7,7 @@ import UIKit
 
 #if canImport(AppKit)
 import AppKit
+import PDFKit
 #endif
 
 #if canImport(CoreGraphics)
@@ -196,102 +197,89 @@ class MealPlanPDFService: ObservableObject {
     private func createPDFiOS(content: String) throws -> Data {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         
-        let pdfData = NSMutableData()
-        guard let consumer = CGDataConsumer(data: pdfData) else {
-            throw PDFError.creationFailed
-        }
+        // Use UIGraphicsPDFRenderer for simpler, more reliable PDF generation
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
         
-        var mediaBox = pageRect
-        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
-            throw PDFError.creationFailed
-        }
-        
-        context.beginPDFPage(nil)
-        
-        let textRect = CGRect(x: 40, y: 40, width: pageRect.width - 80, height: pageRect.height - 80)
-        
-        // Split content into pages
-        let lines = content.components(separatedBy: .newlines)
-        var currentY: CGFloat = 40
-        let lineHeight: CGFloat = 16
-        let pageBottom: CGFloat = pageRect.height - 40
-        
-        for line in lines {
-            if currentY + lineHeight > pageBottom {
-                context.endPDFPage()
-                context.beginPDFPage(nil)
-                currentY = 40
+        let data = renderer.pdfData { context in
+            let textRect = CGRect(x: 40, y: 40, width: pageRect.width - 80, height: pageRect.height - 80)
+            
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineSpacing = 2
+            
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 12),
+                .foregroundColor: UIColor.black,
+                .paragraphStyle: paragraphStyle
+            ]
+            
+            // Start first page
+            context.beginPage()
+            
+            // Split content into manageable chunks for pagination
+            let lines = content.components(separatedBy: .newlines)
+            var currentY: CGFloat = 40
+            let lineHeight: CGFloat = 16
+            let pageBottom: CGFloat = pageRect.height - 80
+            
+            for line in lines {
+                if currentY + lineHeight > pageBottom {
+                    context.beginPage()
+                    currentY = 40
+                }
+                
+                let lineRect = CGRect(x: 40, y: currentY, width: textRect.width, height: lineHeight)
+                line.draw(in: lineRect, withAttributes: attributes)
+                currentY += lineHeight
             }
-            
-            let lineRect = CGRect(x: 40, y: currentY, width: textRect.width, height: lineHeight)
-            
-            // Draw text using Core Graphics
-            context.saveGState()
-            context.textMatrix = CGAffineTransform.identity
-            context.translateBy(x: 0, y: pageRect.height)
-            context.scaleBy(x: 1, y: -1)
-            
-            let adjustedRect = CGRect(x: lineRect.minX, y: pageRect.height - lineRect.maxY, width: lineRect.width, height: lineRect.height)
-            
-            let attributedString = NSAttributedString(string: line, attributes: [
-                NSAttributedString.Key.font: UIFont.systemFont(ofSize: 12),
-                NSAttributedString.Key.foregroundColor: UIColor.black
-            ])
-            
-            let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-            let path = CGPath(rect: adjustedRect, transform: nil)
-            let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, nil)
-            CTFrameDraw(frame, context)
-            
-            context.restoreGState()
-            currentY += lineHeight
         }
         
-        context.endPDFPage()
-        context.closePDF()
-        
-        return pdfData as Data
+        return data
     }
     #endif
     
     #if canImport(AppKit)
     private func createPDFmacOS(content: String) throws -> Data {
-        let pdfData = NSMutableData()
-        var pageRect = NSRect(x: 0, y: 0, width: 612, height: 792)
+        // Create a temporary file path for PDF generation
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
         
-        guard let consumer = CGDataConsumer(data: pdfData) else {
-            throw PDFError.creationFailed
-        }
+        // Create PDF document
+        let pdfDocument = PDFDocument()
         
-        guard let context = CGContext(consumer: consumer, mediaBox: &pageRect, nil) else {
-            throw PDFError.creationFailed
-        }
-        
-        context.beginPDFPage(nil)
-        
+        // Create page content
+        let pageSize = NSSize(width: 612, height: 792)
         let font = NSFont.systemFont(ofSize: 12)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor.black
         ]
         
-        let textRect = NSRect(x: 40, y: 40, width: pageRect.width - 80, height: pageRect.height - 80)
+        let margin: CGFloat = 40
+        let textRect = NSRect(
+            x: margin,
+            y: margin,
+            width: pageSize.width - (margin * 2),
+            height: pageSize.height - (margin * 2)
+        )
         
+        // Create attributed string
         let attributedString = NSAttributedString(string: content, attributes: attributes)
-        let textContainer = NSTextContainer(size: textRect.size)
-        let layoutManager = NSLayoutManager()
-        let textStorage = NSTextStorage(attributedString: attributedString)
         
-        textStorage.addLayoutManager(layoutManager)
-        layoutManager.addTextContainer(textContainer)
+        // Create a view to render the content
+        let textView = NSTextView(frame: textRect)
+        textView.textStorage?.setAttributedString(attributedString)
+        textView.backgroundColor = .clear
         
-        let glyphRange = layoutManager.glyphRange(for: textContainer)
-        layoutManager.drawGlyphs(forGlyphRange: glyphRange, at: textRect.origin)
+        // Create page data
+        let pageData = textView.dataWithPDF(inside: textRect)
         
-        context.endPDFPage()
-        context.closePDF()
+        // Write to temporary file and read back
+        try pageData.write(to: tempURL)
+        let pdfData = try Data(contentsOf: tempURL)
         
-        return pdfData as Data
+        // Clean up temporary file
+        try? FileManager.default.removeItem(at: tempURL)
+        
+        return pdfData
     }
     #endif
     
@@ -451,6 +439,7 @@ import UIKit
 
 #if canImport(AppKit)
 import AppKit
+import PDFKit
 #endif
 
 #if canImport(CoreGraphics)
@@ -1009,114 +998,94 @@ extension MealPlanPDFService {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let pdfData = NSMutableData()
         
-        guard let consumer = CGDataConsumer(data: pdfData) else {
-            throw PDFError.creationFailed
+        // Use UIGraphicsPDFRenderer for better iOS compatibility
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        
+        let data = renderer.pdfData { context in
+            for section in content.sections {
+                context.beginPage()
+                
+                let margin: CGFloat = 50
+                let textRect = CGRect(
+                    x: margin,
+                    y: margin,
+                    width: pageRect.width - (margin * 2),
+                    height: pageRect.height - (margin * 2)
+                )
+                
+                let fontSize: CGFloat = section.type == .cover ? 14 : 12
+                let font = UIFont.systemFont(ofSize: fontSize)
+                
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.lineSpacing = 4
+                
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: UIColor.black,
+                    .paragraphStyle: paragraphStyle
+                ]
+                
+                // Draw text using NSString drawing methods (more reliable)
+                section.content.draw(in: textRect, withAttributes: attributes)
+            }
         }
         
-        var mediaBox = pageRect
-        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
-            throw PDFError.creationFailed
-        }
-        
-        let margin: CGFloat = 50
-        let contentRect = CGRect(
-            x: margin,
-            y: margin,
-            width: pageRect.width - (margin * 2),
-            height: pageRect.height - (margin * 2)
-        )
-        
-        for section in content.sections {
-            context.beginPDFPage(nil)
-            
-            // Draw section content
-            drawSectionContent(
-                context: context,
-                section: section,
-                in: contentRect,
-                pageRect: pageRect
-            )
-            
-            context.endPDFPage()
-        }
-        
-        context.closePDF()
-        return pdfData as Data
+        return data
     }
     
-    private func drawSectionContent(
-        context: CGContext,
-        section: PDFSection,
-        in contentRect: CGRect,
-        pageRect: CGRect
-    ) {
-        context.saveGState()
-        context.textMatrix = CGAffineTransform.identity
-        context.translateBy(x: 0, y: pageRect.height)
-        context.scaleBy(x: 1, y: -1)
-        
-        let adjustedRect = CGRect(
-            x: contentRect.minX,
-            y: pageRect.height - contentRect.maxY,
-            width: contentRect.width,
-            height: contentRect.height
-        )
-        
-        let fontSize: CGFloat = section.type == .cover ? 14 : 12
-        let font = UIFont.systemFont(ofSize: fontSize)
-        
-        let attributedString = NSAttributedString(string: section.content, attributes: [
-            NSAttributedString.Key.font: font,
-            NSAttributedString.Key.foregroundColor: UIColor.black
-        ])
-        
-        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-        let path = CGPath(rect: adjustedRect, transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, nil)
-        CTFrameDraw(frame, context)
-        
-        context.restoreGState()
-    }
     #endif
     
     #if canImport(AppKit)
     private func createProfessionalPDFmacOS(content: PDFContent) throws -> Data {
-        let pdfData = NSMutableData()
-        var pageRect = NSRect(x: 0, y: 0, width: 612, height: 792)
+        // Create a temporary file path for PDF generation
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
         
-        guard let consumer = CGDataConsumer(data: pdfData) else {
-            throw PDFError.creationFailed
-        }
-        
-        guard let context = CGContext(consumer: consumer, mediaBox: &pageRect, nil) else {
-            throw PDFError.creationFailed
-        }
-        
+        // Create a combined content string from all sections
+        var combinedContent = ""
         for section in content.sections {
-            context.beginPDFPage(nil)
-            
-            let font = NSFont.systemFont(ofSize: section.type == .cover ? 14 : 12)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.black
-            ]
-            
-            let margin: CGFloat = 50
-            let textRect = NSRect(
-                x: margin,
-                y: margin,
-                width: pageRect.width - (margin * 2),
-                height: pageRect.height - (margin * 2)
-            )
-            
-            let attributedString = NSAttributedString(string: section.content, attributes: attributes)
-            attributedString.draw(in: textRect)
-            
-            context.endPDFPage()
+            combinedContent += section.title + "\n"
+            combinedContent += "=" + String(repeating: "=", count: section.title.count) + "\n\n"
+            combinedContent += section.content + "\n\n"
+            if section.pageBreakAfter {
+                combinedContent += "\n\n---PAGE BREAK---\n\n"
+            }
         }
         
-        context.closePDF()
-        return pdfData as Data
+        // Create page content
+        let pageSize = NSSize(width: 612, height: 792)
+        let font = NSFont.systemFont(ofSize: 12)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black
+        ]
+        
+        let margin: CGFloat = 50
+        let textRect = NSRect(
+            x: margin,
+            y: margin,
+            width: pageSize.width - (margin * 2),
+            height: pageSize.height - (margin * 2)
+        )
+        
+        // Create attributed string
+        let attributedString = NSAttributedString(string: combinedContent, attributes: attributes)
+        
+        // Create a view to render the content
+        let textView = NSTextView(frame: textRect)
+        textView.textStorage?.setAttributedString(attributedString)
+        textView.backgroundColor = .clear
+        
+        // Create page data
+        let pageData = textView.dataWithPDF(inside: textRect)
+        
+        // Write to temporary file and read back
+        try pageData.write(to: tempURL)
+        let pdfData = try Data(contentsOf: tempURL)
+        
+        // Clean up temporary file
+        try? FileManager.default.removeItem(at: tempURL)
+        
+        return pdfData
     }
     #endif
 }

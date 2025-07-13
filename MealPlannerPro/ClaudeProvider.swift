@@ -3,12 +3,12 @@ import Foundation
 // MARK: - Claude AI Provider for Meal Planning
 class ClaudeProvider: LLMProvider {
     let name = "Claude AI (Anthropic)"
-    private let apiKey = "example" // Replace with your actual API key
+    private let apiKey = "" // Replace with your actual API key
     private let baseURL = "https://api.anthropic.com/v1/messages"
     
     func generateCompletion(prompt: String) async throws -> String {
         // Validate API key
-//        guard !apiKey.isEmpty && apiKey != "example" else {
+//        guard !apiKey.isEmpty && apiKey != "" else {
 //            throw LLMError.invalidAPIKey
 //        }
         
@@ -27,7 +27,7 @@ class ClaudeProvider: LLMProvider {
         // Format the request body for Claude's API
         // Claude uses a different format than OpenAI - it wants messages with roles
         let requestBody = ClaudeRequest(
-            model: "claude-3-haiku-20240307", // Fast and cost-effective model
+            model: "claude-sonnet-4-20250514", // Fast and cost-effective model
             max_tokens: 1500, // Enough for detailed meal plans
             messages: [
                 ClaudeMessage(

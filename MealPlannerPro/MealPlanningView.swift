@@ -16,50 +16,52 @@ struct MealPlanningView: View {
     @State private var showingMealBuilder = false
     
     var body: some View {
-        NavigationSplitView {
-            // Sidebar: Calendar and meal types
-            VStack {
+        NavigationView {
+            VStack(spacing: 20) {
+                // Date Selection
                 DatePicker("Select Date", selection: $selectedDate, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .padding()
+                    .datePickerStyle(.compact)
+                    .padding(.horizontal)
                 
-                Divider()
-                
+                // Quick Add Meal Section
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Quick Add Meal")
                         .font(.headline)
                         .padding(.horizontal)
                     
-                    ForEach(MealType.allCases, id: \.self) { mealType in
-                        Button(action: { createQuickMeal(type: mealType) }) {
-                            HStack {
-                                Text(mealType.emoji)
-                                Text(mealType.displayName)
-                                Spacer()
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(.green)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 10) {
+                        ForEach(MealType.allCases, id: \.self) { mealType in
+                            Button(action: { createQuickMeal(type: mealType) }) {
+                                HStack {
+                                    Text(mealType.emoji)
+                                    Text(mealType.displayName)
+                                        .font(.caption)
+                                    Spacer()
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.caption)
+                                }
+                                .padding(8)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
                             }
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal)
                     }
+                    .padding(.horizontal)
                 }
+                
+                Divider()
+                
+                // Main content: Daily meal plan
+                DailyMealPlanView(
+                    selectedDate: selectedDate,
+                    mealManager: mealManager,
+                    showingMealBuilder: $showingMealBuilder
+                )
                 
                 Spacer()
             }
-            .frame(minWidth: 250)
-            
-        } detail: {
-            // Main content: Daily meal plan
-            DailyMealPlanView(
-                selectedDate: selectedDate,
-                mealManager: mealManager,
-                showingMealBuilder: $showingMealBuilder
-            )
         }
         .sheet(isPresented: $showingMealBuilder) {
             MealBuilderView(mealManager: mealManager)

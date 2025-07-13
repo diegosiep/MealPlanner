@@ -1,8 +1,15 @@
 import Foundation
 
 class USDAFoodService: ObservableObject {
-    private let apiKey = "example"
+    private let apiKey = ""
     private let baseURL = "https://api.nal.usda.gov/fdc/v1"
+    
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30.0
+        config.timeoutIntervalForResource = 60.0
+        return URLSession(configuration: config)
+    }()
     
     func searchFoods(query: String) async throws -> [USDAFood] {
         var components = URLComponents(string: "\(baseURL)/foods/search")!
@@ -21,7 +28,7 @@ class USDAFoodService: ObservableObject {
         print("🔍 Making request to: \(url.absoluteString)")
         
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await urlSession.data(from: url)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Invalid response type")

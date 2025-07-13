@@ -31,6 +31,25 @@ struct EnhancedAIMealPlannerView: View {
     @State private var dietaryRestrictions: [String] = []
     @State private var medicalConditions: [String] = []
     
+    // Customizable nutrition targets
+    @State private var customCalories: String = "2000"
+    @State private var customProtein: String = "150"
+    @State private var customCarbs: String = "250" 
+    @State private var customFat: String = "78"
+    @State private var useCustomTargets = false
+    
+    // Micronutrient targets
+    @State private var customFiber: String = "25"
+    @State private var customSodium: String = "2300"
+    @State private var customPotassium: String = "4700"
+    @State private var customCalcium: String = "1000"
+    @State private var customIron: String = "18"
+    @State private var customVitaminD: String = "15"
+    @State private var customVitaminC: String = "90"
+    @State private var customVitaminB12: String = "2.4"
+    @State private var customFolate: String = "400"
+    @State private var showMicronutrients = false
+    
     // Portion preferences (fixed structure)
     @State private var portionPreferences = PortionPreferences(
         preferMetric: true,
@@ -87,6 +106,21 @@ struct EnhancedAIMealPlannerView: View {
                 PDFViewerSheet(pdfData: pdfData)
             }
         }
+        .sheet(item: Binding<PendingFoodSelection?>(
+            get: { multiDayService.verificationService.pendingFoodSelections.first },
+            set: { _ in }
+        )) { pendingSelection in
+            FoodSelectionView(
+                originalFood: pendingSelection.originalFood,
+                usdaOptions: pendingSelection.usdaOptions,
+                onSelection: { selectedFood in
+                    multiDayService.verificationService.selectFoodForPendingItem(pendingSelection, selectedFood: selectedFood)
+                },
+                onSkip: {
+                    multiDayService.verificationService.selectFoodForPendingItem(pendingSelection, selectedFood: nil)
+                }
+            )
+        }
         .alert("¡Plan Creado!", isPresented: $showingSuccess) {
             Button("Ver Resultados") {
                 selectedTab = .results
@@ -121,6 +155,9 @@ struct EnhancedAIMealPlannerView: View {
             
             // Cuisine and Dietary Preferences
             cuisineAndDietarySection
+            
+            // Nutrition Targets
+            nutritionTargetsSection
             
             // Portion Preferences
             portionPreferencesSection
@@ -426,6 +463,141 @@ struct EnhancedAIMealPlannerView: View {
     }
     
     @ViewBuilder
+    private var nutritionTargetsSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("🎯 Objetivos Nutricionales")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            // Toggle for custom targets
+            Toggle("Usar objetivos personalizados", isOn: $useCustomTargets)
+                .font(.subheadline)
+                .fontWeight(.medium)
+            
+            if useCustomTargets {
+                VStack(spacing: 15) {
+                    // Calories
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Calorías Diarias:")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        HStack {
+                            TextField("2000", text: $customCalories)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+//                                .keyboardType(.numberPad)
+                            Text("kcal")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    // Macronutrients in a grid
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ], spacing: 15) {
+                        // Protein
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Proteína:")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            
+                            HStack {
+                                TextField("150", text: $customProtein)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+//                                    .keyboardType(.numberPad)
+                                Text("g")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        // Carbs
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Carbohidratos:")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            
+                            HStack {
+                                TextField("250", text: $customCarbs)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+//                                    .keyboardType(.numberPad)
+                                Text("g")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        // Fat
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Grasas:")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            
+                            HStack {
+                                TextField("78", text: $customFat)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+//                                    .keyboardType(.numberPad)
+                                Text("g")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Color.yellow.opacity(0.1))
+                .cornerRadius(8)
+                
+                // Micronutrients section
+                VStack(alignment: .leading, spacing: 12) {
+                    Button(action: { showMicronutrients.toggle() }) {
+                        HStack {
+                            Text("Micronutrientes")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Image(systemName: showMicronutrients ? "chevron.up" : "chevron.down")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    
+                    if showMicronutrients {
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 12) {
+                            MicronutrientField(label: "Fibra", value: $customFiber, unit: "g")
+                            MicronutrientField(label: "Sodio", value: $customSodium, unit: "mg")
+                            MicronutrientField(label: "Potasio", value: $customPotassium, unit: "mg")
+                            MicronutrientField(label: "Calcio", value: $customCalcium, unit: "mg")
+                            MicronutrientField(label: "Hierro", value: $customIron, unit: "mg")
+                            MicronutrientField(label: "Vit. D", value: $customVitaminD, unit: "mcg")
+                            MicronutrientField(label: "Vit. C", value: $customVitaminC, unit: "mg")
+                            MicronutrientField(label: "B12", value: $customVitaminB12, unit: "mcg")
+                            MicronutrientField(label: "Folato", value: $customFolate, unit: "mcg")
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.05))
+                        .cornerRadius(8)
+                    }
+                }
+            } else {
+                Text("Se usarán los objetivos del perfil del paciente")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+        }
+        .padding()
+        .background(Color.yellow.opacity(0.05))
+        .cornerRadius(15)
+    }
+    
+    @ViewBuilder
     private var portionPreferencesSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("⚖️ Preferencias de Porciones")
@@ -582,6 +754,25 @@ struct EnhancedAIMealPlannerView: View {
     }
     
     private func getPatientGoals(_ patient: Patient) -> NutritionalGoals {
+        if useCustomTargets {
+            // Use custom targets from UI
+            return NutritionalGoals(
+                calories: Double(customCalories) ?? 2000,
+                protein: Double(customProtein) ?? 150,
+                carbohydrates: Double(customCarbs) ?? 250,
+                fat: Double(customFat) ?? 78,
+                fiber: Double(customFiber) ?? 25,
+                sodium: Double(customSodium) ?? 2300,
+                potassium: Double(customPotassium) ?? 4700,
+                calcium: Double(customCalcium) ?? 1000,
+                iron: Double(customIron) ?? 18,
+                vitaminD: Double(customVitaminD) ?? 15,
+                vitaminC: Double(customVitaminC) ?? 90,
+                vitaminB12: Double(customVitaminB12) ?? 2.4,
+                folate: Double(customFolate) ?? 400
+            )
+        }
+        
         if let goalsJSON = patient.nutritionalGoals,
            let goals = NutritionalGoals.fromJSONString(goalsJSON) {
             return goals
@@ -977,3 +1168,28 @@ struct PDFKitNSViewRepresentable: NSViewRepresentable {
     }
 }
 #endif
+
+// MARK: - Micronutrient Field Component
+struct MicronutrientField: View {
+    let label: String
+    @Binding var value: String
+    let unit: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption2)
+                .fontWeight(.medium)
+            
+            HStack {
+                TextField("0", text: $value)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+//                    .keyboardType(.decimalPad)
+//                    .font(.caption)
+                Text(unit)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+}

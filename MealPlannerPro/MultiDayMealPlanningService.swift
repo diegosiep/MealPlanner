@@ -10,6 +10,11 @@ class MultiDayMealPlanningService: ObservableObject {
     
     private let verifiedMealService = USDAVerifiedMealPlanningService()
     
+    // MARK: - Expose Verification Service for UI
+    var verificationService: USDAVerifiedMealPlanningService {
+        return verifiedMealService
+    }
+    
     // MARK: - Generate Multi-Day Plan
     func generateMultiDayPlan(request: MultiDayPlanRequest) async throws -> MultiDayMealPlan {
         await MainActor.run {

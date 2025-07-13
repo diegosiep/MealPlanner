@@ -87,7 +87,7 @@ struct SmartPortionCalculator {
         for food: USDAFood,
         targetCalories: Double,
         mealType: MealType,
-        patientProfile: PatientProfile?
+        patientProfile: PortionPatientProfile?
     ) -> OptimalPortion {
         
         // Step 1: Calculate base portion size from calories
@@ -149,7 +149,7 @@ struct SmartPortionCalculator {
         return baseGrams * (mealMultipliers[mealType] ?? 1.0)
     }
     
-    private func adjustForPatient(grams: Double, profile: PatientProfile?) -> Double {
+    private func adjustForPatient(grams: Double, profile: PortionPatientProfile?) -> Double {
         guard let profile = profile else { return grams }
         
         var adjustedGrams = grams
@@ -310,7 +310,7 @@ struct UserFriendlyMeasurement {
     let description: String
 }
 
-struct PatientProfile {
+struct PortionPatientProfile {
     let age: Int
     let activityLevel: ActivityLevel
     let culturalBackground: AdvancedPortionManager.AdvancedPortionPreferences.CulturalContext

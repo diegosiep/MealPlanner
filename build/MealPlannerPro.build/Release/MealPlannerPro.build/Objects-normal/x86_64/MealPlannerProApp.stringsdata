@@ -1,0 +1,152 @@
+{
+  "source": "/Volumes/Macintosh HD/Users/diegosierra/Documents/MealPlanner/MealPlannerPro/MealPlannerProApp.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Anterior",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 300
+        }
+      },
+      {
+        "comment": "",
+        "key": "Siguiente",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 311
+        }
+      },
+      {
+        "comment": "",
+        "key": "¡Comenzar!",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 318
+        }
+      },
+      {
+        "comment": "",
+        "key": "Configuración",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 400
+        }
+      },
+      {
+        "comment": "",
+        "key": "Preferencias Generales",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 370
+        }
+      },
+      {
+        "comment": "",
+        "key": "Funciones Avanzadas",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 385
+        }
+      },
+      {
+        "comment": "",
+        "key": "Idioma",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 371
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tamaño de Porción por Defecto",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 376
+        }
+      },
+      {
+        "comment": "",
+        "key": "Español",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 372
+        }
+      },
+      {
+        "comment": "",
+        "key": "English",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 373
+        }
+      },
+      {
+        "comment": "",
+        "key": "Extra Pequeña",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 377
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pequeña",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 378
+        }
+      },
+      {
+        "comment": "",
+        "key": "Media",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 379
+        }
+      },
+      {
+        "comment": "",
+        "key": "Grande",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 380
+        }
+      },
+      {
+        "comment": "",
+        "key": "Extra Grande",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 381
+        }
+      },
+      {
+        "comment": "",
+        "key": "Modo Debug",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 386
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ejecutar Pruebas",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 388
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mostrar Tutorial Nuevamente",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 395
+        }
+      }
+    ]
+  },
+  "version": 1
+}

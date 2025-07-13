@@ -1,0 +1,72 @@
+{
+  "source": "/Volumes/Macintosh HD/Users/diegosierra/Documents/MealPlanner/MealPlannerPro/MealPlanningView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Select Date",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "Quick Add Meal",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 29
+        }
+      },
+      {
+        "comment": "",
+        "key": "🍽️ Meal Plan",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "/ %@",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 168
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Foods",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 201
+        }
+      },
+      {
+        "comment": "",
+        "key": "245 calories",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 191
+        }
+      },
+      {
+        "comment": "",
+        "key": "🔨 Meal Builder",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 218
+        }
+      },
+      {
+        "comment": "",
+        "key": "Advanced meal building coming next!",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 222
+        }
+      }
+    ]
+  },
+  "version": 1
+}
