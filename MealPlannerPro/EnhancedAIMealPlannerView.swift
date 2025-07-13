@@ -14,7 +14,7 @@ import AppKit
 // MARK: - Enhanced Multi-Day Meal Planner View
 struct EnhancedAIMealPlannerView: View {
     @StateObject private var multiDayService = MultiDayMealPlanningService()
-    @StateObject private var pdfService = MealPlanPDFService()
+    @StateObject private var pdfService = FixedMealPlanPDFService()
     @StateObject private var usdaService = USDAFoodService()
     
     @State private var selectedPatient: Patient?
@@ -34,7 +34,7 @@ struct EnhancedAIMealPlannerView: View {
     // Customizable nutrition targets
     @State private var customCalories: String = "2000"
     @State private var customProtein: String = "150"
-    @State private var customCarbs: String = "250" 
+    @State private var customCarbs: String = "250"
     @State private var customFat: String = "78"
     @State private var useCustomTargets = false
     
@@ -485,7 +485,7 @@ struct EnhancedAIMealPlannerView: View {
                         HStack {
                             TextField("2000", text: $customCalories)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
-//                                .keyboardType(.numberPad)
+                            //                                .keyboardType(.numberPad)
                             Text("kcal")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
@@ -507,7 +507,7 @@ struct EnhancedAIMealPlannerView: View {
                             HStack {
                                 TextField("150", text: $customProtein)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
-//                                    .keyboardType(.numberPad)
+                                //                                    .keyboardType(.numberPad)
                                 Text("g")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -523,7 +523,7 @@ struct EnhancedAIMealPlannerView: View {
                             HStack {
                                 TextField("250", text: $customCarbs)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
-//                                    .keyboardType(.numberPad)
+                                //                                    .keyboardType(.numberPad)
                                 Text("g")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -539,7 +539,7 @@ struct EnhancedAIMealPlannerView: View {
                             HStack {
                                 TextField("78", text: $customFat)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
-//                                    .keyboardType(.numberPad)
+                                //                                    .keyboardType(.numberPad)
                                 Text("g")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -834,28 +834,28 @@ struct MultiDayPlanResultsView: View {
                 Text(dateRangeText)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-
-}
                 
-                // Overall Summary
-                HStack {
-                    SummaryCard(title: "Promedio Diario", value: "\(Int(plan.totalNutritionSummary.averageDailyCalories)) cal", color: .blue)
-                    SummaryCard(title: "Precisión", value: "\(Int(plan.totalNutritionSummary.overallAccuracy * 100))%", color: .green)
-                    SummaryCard(title: "Días", value: "\(plan.numberOfDays)", color: .orange)
-                }
             }
             
-            // Daily Plans
-            ForEach(Array(plan.dailyPlans.enumerated()), id: \.offset) { dayIndex, dailyPlan in
-                DailyPlanCard(
-                    dailyPlan: dailyPlan,
-                    dayNumber: dayIndex + 1,
-                    language: plan.language,
-                    onRegenerate: { onRegenerateDay(dayIndex) }
-                )
+            // Overall Summary
+            HStack {
+                SummaryCard(title: "Promedio Diario", value: "\(Int(plan.totalNutritionSummary.averageDailyCalories)) cal", color: .blue)
+                SummaryCard(title: "Precisión", value: "\(Int(plan.totalNutritionSummary.overallAccuracy * 100))%", color: .green)
+                SummaryCard(title: "Días", value: "\(plan.numberOfDays)", color: .orange)
             }
         }
+        
+        // Daily Plans
+        ForEach(Array(plan.dailyPlans.enumerated()), id: \.offset) { dayIndex, dailyPlan in
+            DailyPlanCard(
+                dailyPlan: dailyPlan,
+                dayNumber: dayIndex + 1,
+                language: plan.language,
+                onRegenerate: { onRegenerateDay(dayIndex) }
+            )
+        }
     }
+}
 
 struct SummaryCard: View {
     let title: String
@@ -978,7 +978,7 @@ struct MealSummaryCard: View {
 struct ExportOptionsView: View {
     let plan: MultiDayMealPlan
     let patient: Patient?
-    @ObservedObject var pdfService: MealPlanPDFService
+    @ObservedObject var pdfService: FixedMealPlanPDFService
     let onPDFGenerated: (Data) -> Void
     
     @State private var includeRecipes = true
@@ -1074,7 +1074,7 @@ struct PDFViewerSheet: View {
                 }
             }
             .navigationTitle("Plan de Comidas")
-            #if os(iOS)
+#if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -1088,7 +1088,7 @@ struct PDFViewerSheet: View {
                     }
                 }
             }
-            #else
+#else
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button("Cerrar") {
@@ -1101,12 +1101,12 @@ struct PDFViewerSheet: View {
                     }
                 }
             }
-            #endif
+#endif
         }
     }
     
     private func sharePDF() {
-        #if canImport(UIKit)
+#if canImport(UIKit)
         let activityViewController = UIActivityViewController(
             activityItems: [pdfData],
             applicationActivities: nil
@@ -1116,7 +1116,7 @@ struct PDFViewerSheet: View {
            let window = windowScene.windows.first {
             window.rootViewController?.present(activityViewController, animated: true)
         }
-        #endif
+#endif
     }
 }
 
@@ -1125,13 +1125,13 @@ struct PDFKitRepresentable: View {
     let document: PDFDocument
     
     var body: some View {
-        #if canImport(UIKit)
+#if canImport(UIKit)
         PDFKitUIViewRepresentable(document: document)
-        #elseif canImport(AppKit)
+#elseif canImport(AppKit)
         PDFKitNSViewRepresentable(document: document)
-        #else
+#else
         Text("PDF viewing not supported on this platform")
-        #endif
+#endif
     }
 }
 
@@ -1184,8 +1184,8 @@ struct MicronutrientField: View {
             HStack {
                 TextField("0", text: $value)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-//                    .keyboardType(.decimalPad)
-//                    .font(.caption)
+                //                    .keyboardType(.decimalPad)
+                //                    .font(.caption)
                 Text(unit)
                     .font(.caption2)
                     .foregroundColor(.secondary)

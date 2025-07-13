@@ -1,36 +1,15 @@
-// Add these imports to the top of your ContentView.swift file
 import SwiftUI
 import CoreData
-import PDFKit
 
-#if canImport(UIKit)
-import UIKit
-#endif
-
-#if canImport(AppKit)
-import AppKit
-#endif
-
-// Add this extension to fix missing MealType.allCases if needed
-extension MealType {
-    static var allCases: [MealType] {
-        return [.breakfast, .lunch, .dinner, .snack]
-    }
-}
-
-// Add this extension to fix missing PlanLanguage.allCases if needed
-extension PlanLanguage {
-    public static var allCases: [PlanLanguage] {
-        return [.english, .spanish]
-    }
-}
-
-struct UpdatedContentView: View {
+// MARK: - Fixed Content View with Language Support
+struct FixedContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @StateObject private var languageManager = LanguageManager.shared
     @StateObject private var usdaService = USDAFoodService()
     @StateObject private var foodManager: FoodDataManager
     
     @State private var selectedTab = 0
+    @State private var showingSettings = false
     
     init() {
         let container = PersistenceController.shared.container
@@ -38,1127 +17,643 @@ struct UpdatedContentView: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Food Search Tab (Enhanced)
-            EnhancedFoodSearchView(usdaService: usdaService, foodManager: foodManager)
-                .tabItem {
-                    Image(systemName: "magnifyingglass")
-                    Text("Buscar Alimentos")
-                }
-                .tag(0)
-            
-            // My Foods Tab
-            SavedFoodsView(foodManager: foodManager)
-                .tabItem {
-                    Image(systemName: "heart.fill")
-                    Text("Mis Alimentos")
-                }
-                .tag(1)
-            
-            // Basic Meal Planning Tab
-            MealPlanningView()
-                .tabItem {
-                    Image(systemName: "calendar")
-                    Text("Planes Básicos")
-                }
-                .tag(2)
-            
-            // Enhanced AI Assistant Tab (Single Meals)
-            AIMealPlannerView()
-                .tabItem {
-                    Image(systemName: "brain.head.profile")
-                    Text("Asistente IA")
-                }
-                .tag(3)
-            
-            // NEW: Enhanced Multi-Day Planner Tab
-            EnhancedAIMealPlannerView()
-                .tabItem {
-                    Image(systemName: "calendar.badge.plus")
-                    Text("Planes Multi-Día")
-                }
-                .tag(4)
-        }
-        .frame(minWidth: 1000, minHeight: 700) // Larger window for new features
-    }
-}
-
-// MARK: - Enhanced Food Search with Better Matching
-struct EnhancedFoodSearchView: View {
-    @ObservedObject var usdaService: USDAFoodService
-    @ObservedObject var foodManager: FoodDataManager
-    
-    @State private var searchText = ""
-    @State private var foods: [USDAFood] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var searchStrategy: SearchStrategy = .intelligent
-    
-    enum SearchStrategy: String, CaseIterable {
-        case direct = "Búsqueda Directa"
-        case intelligent = "Búsqueda Inteligente"
-        case ingredient_separation = "Separación de Ingredientes"
-    }
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            // Enhanced Header with Search Strategy
-            VStack {
-                Text("🔍 Búsqueda Avanzada USDA")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text("Búsqueda inteligente con separación automática de ingredientes")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-                
-                // Search Strategy Picker
-                Picker("Estrategia de Búsqueda", selection: $searchStrategy) {
-                    ForEach(SearchStrategy.allCases, id: \.self) { strategy in
-                        Text(strategy.rawValue).tag(strategy)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding()
-            }
-            
-            // Enhanced Search Bar
-            HStack {
-                TextField("Ej: 'pollo salteado con espinacas' o 'salmón a la parrilla'", text: $searchText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .onSubmit {
-                        Task { await performEnhancedSearch() }
-                    }
-                
-                Button("Buscar") {
-                    Task { await performEnhancedSearch() }
-                }
-                .disabled(isLoading || searchText.isEmpty)
-                .buttonStyle(.borderedProminent)
-            }
-            .padding()
-            
-            // Search suggestions for compound foods
-            if searchStrategy == .ingredient_separation {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("💡 Ejemplos de búsquedas inteligentes:")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    
-                    Text("• 'pollo salteado en aceite' → se separa en 'pollo' + 'aceite de oliva'")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    
-                    Text("• 'arroz con verduras' → se separa en 'arroz' + 'verduras mixtas'")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding()
-                .background(Color.blue.opacity(0.05))
-                .cornerRadius(8)
-            }
-            
-            // Status and Results
-            if isLoading {
-                HStack {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Buscando en base de datos USDA...")
-                }
-            }
-            
-            if let error = errorMessage {
-                Text("Error: \(error)")
-                    .foregroundColor(.red)
-                    .padding()
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(8)
-            }
-            
-            if !foods.isEmpty {
-                VStack {
-                    Text("Encontrados \(foods.count) alimentos:")
-                        .font(.headline)
-                    
-                    List(foods) { food in
-                        EnhancedFoodRowView(food: food, foodManager: foodManager)
-                    }
-                }
-            }
-        }
-        .padding()
-    }
-    
-    private func performEnhancedSearch() async {
-        isLoading = true
-        errorMessage = nil
-        foods = []
-        
-        do {
-            switch searchStrategy {
-            case .direct:
-                foods = try await usdaService.searchFoods(query: searchText)
-            case .intelligent:
-                foods = try await performIntelligentSearch(query: searchText)
-            case .ingredient_separation:
-                foods = try await performIngredientSeparationSearch(query: searchText)
-            }
-            
-            if foods.isEmpty {
-                errorMessage = "No se encontraron alimentos para '\(searchText)'. Intenta términos más generales."
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        
-        isLoading = false
-    }
-    
-    private func performIntelligentSearch(query: String) async throws -> [USDAFood] {
-        // Multiple search strategies
-        var allResults: [USDAFood] = []
-        
-        // 1. Direct search
-        let directResults = try await usdaService.searchFoods(query: query)
-        allResults.append(contentsOf: directResults)
-        
-        // 2. Simplified search (remove cooking methods)
-        let simplifiedQuery = simplifySearchQuery(query)
-        if simplifiedQuery != query {
-            let simplifiedResults = try await usdaService.searchFoods(query: simplifiedQuery)
-            allResults.append(contentsOf: simplifiedResults)
-        }
-        
-        // 3. Category search
-        let categoryQuery = categorizeFoodQuery(query)
-        if !categoryQuery.isEmpty {
-            let categoryResults = try await usdaService.searchFoods(query: categoryQuery)
-            allResults.append(contentsOf: categoryResults)
-        }
-        
-        // Remove duplicates
-        let uniqueResults = Array(Set(allResults.map { $0.fdcId }))
-            .compactMap { fdcId in allResults.first { $0.fdcId == fdcId } }
-        
-        return Array(uniqueResults.prefix(15)) // Limit results
-    }
-    
-    private func performIngredientSeparationSearch(query: String) async throws -> [USDAFood] {
-        let ingredients = separateCompoundQuery(query)
-        var allResults: [USDAFood] = []
-        
-        for ingredient in ingredients {
-            let results = try await usdaService.searchFoods(query: ingredient)
-            allResults.append(contentsOf: results.prefix(5)) // 5 results per ingredient
-        }
-        
-        return Array(allResults.prefix(20))
-    }
-    
-    private func simplifySearchQuery(_ query: String) -> String {
-        let unwantedWords = ["salteado", "a la parrilla", "cocido", "fresco", "con", "en"]
-        var simplified = query.lowercased()
-        
-        for word in unwantedWords {
-            simplified = simplified.replacingOccurrences(of: word, with: "")
-        }
-        
-        return simplified.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private func categorizeFoodQuery(_ query: String) -> String {
-        let lowerQuery = query.lowercased()
-        
-        if lowerQuery.contains("pollo") { return "chicken" }
-        if lowerQuery.contains("salmón") { return "salmon" }
-        if lowerQuery.contains("espinacas") { return "spinach" }
-        if lowerQuery.contains("arroz") { return "rice" }
-        
-        return ""
-    }
-    
-    private func separateCompoundQuery(_ query: String) -> [String] {
-        let lowerQuery = query.lowercased()
-        var ingredients: [String] = []
-        
-        // Detect patterns and separate
-        if lowerQuery.contains("salteado") || lowerQuery.contains("con aceite") {
-            // Extract base ingredient
-            if lowerQuery.contains("pollo") { ingredients.append("chicken") }
-            if lowerQuery.contains("espinacas") { ingredients.append("spinach") }
-            // Add oil
-            ingredients.append("olive oil")
-        } else if lowerQuery.contains("con") {
-            // Split by "con"
-            let parts = lowerQuery.components(separatedBy: "con")
-            for part in parts {
-                let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    ingredients.append(trimmed)
-                }
-            }
-        } else {
-            ingredients.append(query)
-        }
-        
-        return ingredients
-    }
-}
-
-// MARK: - Enhanced Food Row with Better Portion Display
-struct EnhancedFoodRowView: View {
-    let food: USDAFood
-    @ObservedObject var foodManager: FoodDataManager
-    
-    @State private var showingDetail = false
-    @State private var isSaved = false
-    @State private var selectedPortion: FoodPortion
-    
-    init(food: USDAFood, foodManager: FoodDataManager) {
-        self.food = food
-        self.foodManager = foodManager
-        self._selectedPortion = State(initialValue: food.availablePortions.first ?? FoodPortion(
-            id: "100g",
-            description: "100g",
-            gramWeight: 100,
-            modifier: "per 100g",
-            isDefault: true
-        ))
-    }
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(food.description)
-                    .font(.headline)
-                    .lineLimit(2)
-                
-                // Enhanced nutrition display with selected portion
-                let currentNutrients = selectedPortion.calculateNutrients(from: food)
-                HStack {
-                    NutrientBadge(value: Int(currentNutrients.calories), unit: "cal", color: .blue)
-                    NutrientBadge(value: Int(currentNutrients.protein), unit: "g proteína", color: .green)
-                    NutrientBadge(value: Int(currentNutrients.carbs), unit: "g carbs", color: .orange)
-                    NutrientBadge(value: Int(currentNutrients.fat), unit: "g grasa", color: .purple)
-                }
-                
-                // Portion selector
-                Picker("Porción", selection: $selectedPortion) {
-                    ForEach(food.availablePortions, id: \.id) { portion in
-                        Text(portion.description).tag(portion)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .font(.caption)
-                
-                if let brand = food.brandOwner {
-                    Text("Marca: \(brand)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            // Action buttons
-            VStack {
-                Button(action: { showingDetail = true }) {
-                    Image(systemName: "info.circle")
-                        .font(.title2)
-                }
-                .buttonStyle(.borderless)
-                
-                Button(action: { saveFood() }) {
-                    Image(systemName: isSaved ? "heart.fill" : "heart")
-                        .font(.title2)
-                        .foregroundColor(isSaved ? .red : .gray)
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .padding(.vertical, 4)
-        .sheet(isPresented: $showingDetail) {
-            USDAFoodDetailView(food: food)
-        }
-    }
-    
-    private func saveFood() {
-        foodManager.saveFood(from: food)
-        isSaved = true
-        
-        withAnimation(.easeInOut(duration: 0.3)) {
-            // Visual feedback
-        }
-    }
-}
-
-// MARK: - Updated Food Detail View
-struct FoodDetailView: View {
-    let food: Food
-    @State private var selectedPatient: Patient?
-    
-    var body: some View {
         NavigationView {
-            VStack {
-                Text("📊 Detailed Nutrition")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text(food.name ?? "Unknown Food")
-                    .font(.headline)
-                    .padding()
-                
-                // Add button to open nutrition analysis
-                NavigationLink(destination: NutritionAnalysisView(food: food, patient: selectedPatient)) {
-                    Text("Open Complete Analysis")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
-                }
-                .padding()
-                
-                Spacer()
-            }
-            .padding()
-        }
-        .frame(minWidth: 500, minHeight: 400)
-    }
-}
-
-// MARK: - Nutrient Badge
-struct NutrientBadge: View {
-    let value: Int
-    let unit: String
-    let color: Color
-    
-    var body: some View {
-        Text("\(value) \(unit)")
-            .font(.caption)
-            .padding(4)
-            .background(color.opacity(0.2))
-            .foregroundColor(color)
-            .cornerRadius(4)
-    }
-}
-
-// MARK: - Saved Foods View
-struct SavedFoodsView: View {
-    @ObservedObject var foodManager: FoodDataManager
-    @State private var savedFoods: [Food] = []
-    @State private var searchText = ""
-    
-    var filteredFoods: [Food] {
-        if searchText.isEmpty {
-            return savedFoods
-        } else {
-            return savedFoods.filter { food in
-                food.name?.lowercased().contains(searchText.lowercased()) ?? false
-            }
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            VStack {
-                Text("💖 My Food Library")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text("Your personal collection of saved foods")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Stats
-            HStack(spacing: 30) {
-                StatCard(title: "Total Foods", value: "\(savedFoods.count)", color: .blue)
-                StatCard(title: "This Week", value: "\(foodsThisWeek)", color: .green)
-                StatCard(title: "Favorites", value: "\(savedFoods.count)", color: .red)
-            }
-            .padding()
-            
-            // Search bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.gray)
-                
-                TextField("Search your saved foods...", text: $searchText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-            }
-            .padding(.horizontal)
-            
-            // Foods list
-            if filteredFoods.isEmpty {
-                ContentUnavailableView(
-                    "No saved foods yet",
-                    systemImage: "heart",
-                    description: Text("Start searching for foods and save them to build your library!")
-                )
-            } else {
-                List(filteredFoods, id: \.objectID) { food in
-                    SavedFoodRowView(food: food, foodManager: foodManager)
-                }
-            }
-        }
-        .padding()
-        .onAppear {
-            refreshSavedFoods()
-        }
-    }
-    
-    private var foodsThisWeek: Int {
-        let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return savedFoods.filter { food in
-            food.dateAdded ?? Date.distantPast > oneWeekAgo
-        }.count
-    }
-    
-    private func refreshSavedFoods() {
-        savedFoods = foodManager.getSavedFoods()
-    }
-}
-
-// MARK: - Stat Card
-struct StatCard: View {
-    let title: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        VStack {
-            Text(value)
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundColor(color)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(width: 80)
-        .padding()
-        .background(color.opacity(0.1))
-        .cornerRadius(12)
-    }
-}
-
-// MARK: - Saved Food Row
-struct SavedFoodRowView: View {
-    let food: Food
-    @ObservedObject var foodManager: FoodDataManager
-    @State private var showingDetail = false
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(food.name ?? "Unknown Food")
-                    .font(.headline)
-                    .lineLimit(2)
-                
-                // Nutrition summary
+            VStack(spacing: 0) {
+                // MARK: - Top Navigation Bar with Language Switcher
                 HStack {
-                    NutrientBadge(value: Int(food.calories), unit: "cal", color: .blue)
-                    NutrientBadge(value: Int(food.protein), unit: "g protein", color: .green)
-                    NutrientBadge(value: Int(food.carbs), unit: "g carbs", color: .orange)
-                    NutrientBadge(value: Int(food.fat), unit: "g fat", color: .purple)
-                }
-                
-                if let brand = food.brandOwner {
-                    Text("Brand: \(brand)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Text("Added \(formatDate(food.dateAdded))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            // Action buttons
-            VStack(spacing: 10) {
-                Button(action: { showingDetail = true }) {
-                    Image(systemName: "info.circle.fill")
+                    Text("MealPlannerPro")
                         .font(.title2)
-                        .foregroundColor(.blue)
-                }
-                .buttonStyle(.borderless)
-                
-                Button(action: { addToCurrentMeal() }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.green)
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .padding(.vertical, 4)
-        .sheet(isPresented: $showingDetail) {
-            SavedFoodDetailView(food: food)
-        }
-    }
-    
-    private func formatDate(_ date: Date?) -> String {
-        guard let date = date else { return "Unknown" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .named
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
-    
-    private func addToCurrentMeal() {
-        // We'll implement this when we build meal creation
-        print("Adding \(food.name ?? "food") to meal!")
-    }
-}
-
-// MARK: - Saved Food Detail View (for Core Data foods)
-struct SavedFoodDetailView: View {
-    let food: Food // This is the Core Data entity
-    
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Header
-                    VStack(alignment: .leading) {
-                        Text(food.name ?? "Unknown Food")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        if let brand = food.brandOwner {
-                            Text("by \(brand)")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Text("USDA ID: \(food.fdcId)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Divider()
-                    
-                    // Nutrition Facts Panel for saved food
-                    VStack(alignment: .leading, spacing: 15) {
-                        Text("Nutrition Facts")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Text("Per \(Int(food.servingSize)) \(food.servingSizeUnit ?? "g")")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        BasicNutritionFactRow(nutrient: "Calories", value: "\(Int(food.calories))", unit: "")
-                        BasicNutritionFactRow(nutrient: "Protein", value: "\(String(format: "%.1f", food.protein))", unit: "g")
-                        BasicNutritionFactRow(nutrient: "Carbohydrates", value: "\(String(format: "%.1f", food.carbs))", unit: "g")
-                        BasicNutritionFactRow(nutrient: "Fat", value: "\(String(format: "%.1f", food.fat))", unit: "g")
-                        BasicNutritionFactRow(nutrient: "Fiber", value: "\(String(format: "%.1f", food.fiber))", unit: "g")
-                        BasicNutritionFactRow(nutrient: "Sodium", value: "\(String(format: "%.1f", food.sodium))", unit: "mg")
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(12)
-                    
-                    // Advanced Analysis Button (for saved foods)
-                    NavigationLink(destination: NutritionAnalysisView(food: food, patient: nil)) {
-                        HStack {
-                            Image(systemName: "chart.bar.fill")
-                            Text("Open Advanced Analysis")
-                        }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
-                    }
-                    .padding()
+                        .fontWeight(.bold)
                     
                     Spacer()
+                    
+                    // Language Switcher
+                    LanguageSwitcher()
+                    
+                    // Settings Button
+                    Button(action: { showingSettings = true }) {
+                        Image(systemName: "gear")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                    }
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color.gray.opacity(0.3)),
+                    alignment: .bottom
+                )
+                
+                // MARK: - Main Content with Fixed Layout
+                TabView(selection: $selectedTab) {
+                    // Food Search Tab
+                    FixedFoodSearchView(usdaService: usdaService, foodManager: foodManager)
+                        .tabItem {
+                            Image(systemName: "magnifyingglass")
+                            Text(languageManager.currentLanguage.appStrings.foodSearch)
+                        }
+                        .tag(0)
+                    
+                    // My Foods Tab
+                    FixedSavedFoodsView(foodManager: foodManager)
+                        .tabItem {
+                            Image(systemName: "heart.fill")
+                            Text(languageManager.currentLanguage.appStrings.myFoods)
+                        }
+                        .tag(1)
+                    
+                    // Basic Meal Planning Tab
+                    FixedMealPlanningView()
+                        .tabItem {
+                            Image(systemName: "calendar")
+                            Text(languageManager.currentLanguage.appStrings.basicPlans)
+                        }
+                        .tag(2)
+                    
+                    // FIXED AI Assistant Tab
+                    FixedAIMealPlannerView()
+                        .tabItem {
+                            Image(systemName: "brain.head.profile")
+                            Text(languageManager.currentLanguage.appStrings.aiAssistant)
+                        }
+                        .tag(3)
+                    
+                    // Multi-Day Planner Tab
+                    FixedEnhancedAIMealPlannerView()
+                        .tabItem {
+                            Image(systemName: "calendar.badge.plus")
+                            Text(languageManager.currentLanguage.appStrings.multiDayPlanner)
+                        }
+                        .tag(4)
+                }
             }
         }
-        .frame(minWidth: 500, minHeight: 600)
-    }
-}
-
-
-// MARK: - Nutrition Fact Row
-struct NutritionFactRow: View {
-    let nutrient: String
-    let value: String
-    let unit: String
-    
-    var body: some View {
-        HStack {
-            Text(nutrient)
-                .fontWeight(.medium)
-            
-            Spacer()
-            
-            Text("\(value)\(unit)")
-                .fontWeight(.bold)
+        .frame(minWidth: 1200, minHeight: 800) // Fixed minimum window size
+        .languageUpdatable()
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
-        .padding(.vertical, 4)
     }
 }
 
-
-// MARK: - Professional USDA Food Detail View with Portions
-// MARK: - Professional USDA Food Detail View with Patient Integration
-struct USDAFoodDetailView: View {
-    let food: USDAFood
-    @State private var selectedPortion: FoodPortion
-    @State private var customQuantity: Double = 1.0
-    @State private var selectedPatient: Patient?
-    @State private var selectedMealType: MealType = .lunch
-    @State private var showingAddSuccess = false
-    @State private var showingPatientSelector = false
+// MARK: - Fixed AI Assistant View (Solving Column Layout Issues)
+struct FixedAIMealPlannerView: View {
+    @StateObject private var languageManager = LanguageManager.shared
+    @StateObject private var llmService = LLMService()
+    @StateObject private var verifiedService = USDAVerifiedMealPlanningService()
     
-    // Access to Core Data for patient management
+    @State private var selectedPatient: Patient?
+    @State private var targetCalories = 600
+    @State private var selectedMealType: MealType = .lunch
+    @State private var selectedCuisine = "Mediterráneo"
+    @State private var dietaryRestrictions: [String] = []
+    @State private var medicalConditions: [String] = []
+    
+    @State private var currentSuggestion: VerifiedMealPlanSuggestion?
+    @State private var showingSuccess = false
+    @State private var errorMessage: String?
+    @State private var isGenerating = false
+    
+    // Access to patients
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \Patient.lastName, ascending: true)],
         animation: .default)
     private var patients: FetchedResults<Patient>
     
-    init(food: USDAFood) {
-        self.food = food
-        _selectedPortion = State(initialValue: food.availablePortions.first { $0.isDefault } ?? food.availablePortions[0])
-    }
-    
-    private var currentNutrients: PortionNutrients {
-        let adjustedPortion = FoodPortion(
-            id: selectedPortion.id,
-            description: customQuantity == 1.0 ? selectedPortion.description : "\(String(format: "%.1f", customQuantity)) × \(selectedPortion.description)",
-            gramWeight: selectedPortion.gramWeight * customQuantity,
-            modifier: selectedPortion.modifier,
-            isDefault: selectedPortion.isDefault
-        )
-        return adjustedPortion.calculateNutrients(from: food)
+    private var strings: AppLocalizedStrings {
+        languageManager.currentLanguage.appStrings
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 25) {
-                    // Header
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(food.description)
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        if let brand = food.brandOwner {
-                            Text("by \(brand)")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        HStack {
-                            Text("USDA ID: \(food.fdcId)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            Text("\(food.dataType ?? "Unknown")")
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.blue.opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    // Portion Selector
-                    PortionSelectorView(
-                        food: food,
-                        selectedPortion: $selectedPortion,
-                        customQuantity: $customQuantity
-                    )
-                    
-                    Divider()
-                    
-                    // ADD TO PATIENT PLAN SECTION
-                    VStack(alignment: .leading, spacing: 15) {
-                        Text("👥 Add to Patient Plan")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.green)
-                        
-                        // Patient Selector
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Select Patient:")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            if patients.isEmpty {
-                                Button("Create First Patient") {
-                                    showingPatientSelector = true
-                                }
-                                .padding()
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
-                            } else {
-                                Picker("Patient", selection: $selectedPatient) {
-                                    Text("Select a patient...").tag(Patient?(nil))
-                                    ForEach(patients, id: \.objectID) { patient in
-                                        Text("\(patient.firstName ?? "") \(patient.lastName ?? "")")
-                                            .tag(Patient?(patient))
-                                    }
-                                }
-                                .pickerStyle(MenuPickerStyle())
-                                .padding()
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(8)
-                            }
-                        }
-                        
-                        // Meal Type Selector
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Add to Meal:")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            HStack {
-                                ForEach(MealType.allCases, id: \.self) { mealType in
-                                    Button(action: { selectedMealType = mealType }) {
-                                        HStack {
-                                            Text(mealType.emoji)
-                                            Text(mealType.displayName)
-                                        }
-                                        .font(.caption)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(selectedMealType == mealType ? Color.green : Color.gray.opacity(0.2))
-                                        .foregroundColor(selectedMealType == mealType ? .white : .primary)
-                                        .cornerRadius(8)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        
-                        // Current Selection Summary
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Will Add:")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(currentNutrients.portion.description)
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                    Text("of \(food.description)")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                                
-                                Spacer()
-                                
-                                VStack(alignment: .trailing) {
-                                    Text("\(Int(currentNutrients.calories)) cal")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.blue)
-                                    Text("\(Int(currentNutrients.portion.gramWeight))g")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding()
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        
-                        // Add Button
-                        Button(action: addToPatientPlan) {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                Text("Add to \(selectedPatient?.firstName ?? "Patient")'s \(selectedMealType.displayName)")
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(selectedPatient != nil ? Color.green : Color.gray)
-                            .cornerRadius(10)
-                        }
-                        .disabled(selectedPatient == nil)
-                    }
-                    .padding()
-                    .background(Color.green.opacity(0.05))
-                    .cornerRadius(15)
-                    
-                    Divider()
-                    
-                    // Detailed Nutrition Facts for Selected Portion
-                    VStack(alignment: .leading, spacing: 15) {
-                        Text("📊 Detailed Nutrition Facts")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Text("Per \(currentNutrients.portion.description)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        // Macronutrients
-                        NutritionFactsSection(
-                            title: "Macronutrients",
-                            color: Color.blue,
-                            nutrients: [
-                                ("Calories", currentNutrients.calories, "kcal"),
-                                ("Protein", currentNutrients.protein, "g"),
-                                ("Total Fat", currentNutrients.fat, "g"),
-                                ("Carbohydrates", currentNutrients.carbs, "g"),
-                                ("Dietary Fiber", currentNutrients.fiber, "g"),
-                                ("Sodium", currentNutrients.sodium, "mg")
-                            ]
-                        )
-                        
-                        // All Other Nutrients
-                        if !currentNutrients.allNutrients.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("All Available Nutrients")
-                                    .font(.headline)
-                                    .foregroundColor(Color.green)
-                                
-                                LazyVGrid(columns: [
-                                    GridItem(.flexible()),
-                                    GridItem(.flexible())
-                                ], spacing: 8) {
-                                    ForEach(currentNutrients.allNutrients.prefix(30), id: \.name) { nutrient in
-                                        HStack {
-                                            Text(nutrient.name)
-                                                .font(.caption)
-                                                .lineLimit(2)
-                                            
-                                            Spacer()
-                                            
-                                            if nutrient.value > 0 {
-                                                Text("\(String(format: "%.2f", nutrient.value)) \(nutrient.unit)")
-                                                    .font(.caption)
-                                                    .fontWeight(.medium)
-                                            } else {
-                                                Text("—")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                        }
-                                        .padding(.vertical, 4)
-                                    }
-                                }
-                            }
-                            .padding()
-                            .background(Color.green.opacity(0.05))
-                            .cornerRadius(12)
-                        }
-                    }
-                    
-                    Spacer()
-                }
-                .padding()
-            }
-        }
-        .frame(minWidth: 800, minHeight: 900)
-        .alert("Added to Meal Plan!", isPresented: $showingAddSuccess) {
-            Button("OK") { }
-        } message: {
-            Text("Successfully added \(currentNutrients.portion.description) to \(selectedPatient?.firstName ?? "")'s \(selectedMealType.displayName)!")
-        }
-        .sheet(isPresented: $showingPatientSelector) {
-            QuickPatientCreator()
-        }
-    }
-    
-    // MARK: - Add to Patient Plan Function
-    private func addToPatientPlan() {
-        guard let patient = selectedPatient else { return }
-        
-        // Save the food to Core Data first (if not already saved)
-        let foodManager = FoodDataManager(container: PersistenceController.shared.container)
-        foodManager.saveFood(from: food)
-        
-        // Get the saved food
-        let request: NSFetchRequest<Food> = Food.fetchRequest()
-        request.predicate = NSPredicate(format: "fdcId == %d", food.fdcId)
-        
-        do {
-            let savedFoods = try viewContext.fetch(request)
-            guard let savedFood = savedFoods.first else { return }
-            
-            // Create or find today's meal
-            let today = Calendar.current.startOfDay(for: Date())
-            let mealRequest: NSFetchRequest<Meal> = Meal.fetchRequest()
-            mealRequest.predicate = NSPredicate(format: "patient == %@ AND mealType == %@ AND date >= %@ AND date < %@",
-                                                patient, selectedMealType.rawValue, today as NSDate, Calendar.current.date(byAdding: .day, value: 1, to: today)! as NSDate)
-            
-            let existingMeals = try viewContext.fetch(mealRequest)
-            let meal: Meal
-            
-            if let existingMeal = existingMeals.first {
-                meal = existingMeal
-            } else {
-                // Create new meal
-                meal = Meal(context: viewContext)
-                meal.name = selectedMealType.displayName
-                meal.mealType = selectedMealType.rawValue
-                meal.date = Date()
-                meal.patient = patient
-                meal.totalCalories = 0
-            }
-            
-            // Create MealFood entry
-            let mealFood = MealFood(context: viewContext)
-            mealFood.quantity = currentNutrients.portion.gramWeight
-            mealFood.unit = "g"
-            mealFood.food = savedFood
-            mealFood.meal = meal
-            
-            // Update meal totals
-            meal.totalCalories = meal.totalCalories + currentNutrients.calories
-            
-            try viewContext.save()
-            
-            showingAddSuccess = true
-            print("✅ Successfully added \(currentNutrients.portion.description) to \(patient.firstName ?? "")'s \(selectedMealType.displayName)")
-            
-        } catch {
-            print("❌ Error adding food to patient plan: \(error)")
-        }
-    }
-}
-
-// MARK: - Quick Patient Creator
-struct QuickPatientCreator: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.managedObjectContext) private var viewContext
-    
-    @State private var firstName = ""
-    @State private var lastName = ""
-    
-    var body: some View {
-        NavigationView {
+        // FIXED: Use HSplitView for proper two-column layout
+        HSplitView {
+            // LEFT COLUMN - Configuration Panel (Fixed Width)
             VStack(spacing: 20) {
-                Text("Create New Patient")
-                    .font(.title)
-                    .fontWeight(.bold)
-                
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("First Name:")
-                    TextField("Enter first name", text: $firstName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                // Header
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(strings.aiAssistantTitle)
+                        .font(.title)
+                        .fontWeight(.bold)
                     
-                    Text("Last Name:")
-                    TextField("Enter last name", text: $lastName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    Text(strings.aiAssistantSubtitle)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
                 }
-                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                Button("Create Patient") {
-                    createPatient()
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Patient Selection
+                        configurationSection(title: strings.patientSelection) {
+                            patientSelectionView
+                        }
+                        
+                        // Meal Configuration
+                        configurationSection(title: strings.mealConfiguration) {
+                            mealConfigurationView
+                        }
+                        
+                        // Preferences
+                        configurationSection(title: strings.preferences) {
+                            preferencesView
+                        }
+                        
+                        // Generate Button
+                        generateButton
+                    }
+                    .padding(.bottom, 20)
                 }
-                .disabled(firstName.isEmpty || lastName.isEmpty)
-                .buttonStyle(.borderedProminent)
                 
                 Spacer()
             }
+            .frame(width: 350) // Fixed width for left panel
             .padding()
-            .navigationTitle("New Patient")
-            //            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+            .background(Color(NSColor.controlBackgroundColor))
+            
+            // RIGHT COLUMN - Results Display (Expandable)
+            VStack(spacing: 0) {
+                if isGenerating {
+                    // Loading State
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text(strings.generating)
+                            .font(.headline)
+                        Text("Verificando alimentos con base de datos USDA...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.white)
+                } else if let suggestion = currentSuggestion {
+                    // Results Display
+                    resultDisplayView(suggestion: suggestion)
+                } else {
+                    // Empty State
+                    VStack(spacing: 20) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray.opacity(0.5))
+                        
+                        Text(strings.generatePersonalizedMeals)
+                            .font(.title2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
+                        Text("Configura los parámetros en el panel izquierdo y genera una comida personalizada")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.white)
+                }
+            }
+            .overlay(
+                Rectangle()
+                    .frame(width: 1)
+                    .foregroundColor(Color.gray.opacity(0.3)),
+                alignment: .leading
+            )
+        }
+        .alert(strings.mealGenerated, isPresented: $showingSuccess) {
+            Button(strings.ok) { }
+        }
+        .alert(strings.error, isPresented: .constant(errorMessage != nil)) {
+            Button(strings.ok) { errorMessage = nil }
+        } message: {
+            if let error = errorMessage {
+                Text(error)
+            }
+        }
+    }
+    
+    // MARK: - Configuration Sections
+    private func configurationSection<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            content()
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+    }
+    
+    private var patientSelectionView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(strings.selectPatient)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            
+            Picker("", selection: $selectedPatient) {
+                Text("Sin paciente específico").tag(nil as Patient?)
+                ForEach(patients, id: \.self) { patient in
+                    Text("\(patient.firstName ?? "") \(patient.lastName ?? "")")
+                        .tag(patient as Patient?)
+                }
+            }
+            .pickerStyle(MenuPickerStyle())
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+    
+    private var mealConfigurationView: some View {
+        VStack(spacing: 12) {
+            // Target Calories
+            VStack(alignment: .leading, spacing: 4) {
+                Text(strings.targetCalories)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                HStack {
+                    Slider(value: Binding(
+                        get: { Double(targetCalories) },
+                        set: { targetCalories = Int($0) }
+                    ), in: 200...1500, step: 50)
+                    
+                    Text("\(targetCalories) kcal")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .frame(width: 80, alignment: .trailing)
+                }
+            }
+            
+            // Meal Type
+            VStack(alignment: .leading, spacing: 4) {
+                Text(strings.mealType)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Picker("", selection: $selectedMealType) {
+                    ForEach(MealType.allCases, id: \.self) { mealType in
+                        Text(mealType.localizedName(language: languageManager.currentLanguage))
+                            .tag(mealType)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+            }
+            
+            // Cuisine
+            VStack(alignment: .leading, spacing: 4) {
+                Text(strings.cuisine)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Picker("", selection: $selectedCuisine) {
+                    Text("Mediterráneo").tag("Mediterráneo")
+                    Text("Mexicano").tag("Mexicano")
+                    Text("Asiático").tag("Asiático")
+                    Text("Americano").tag("Americano")
+                    Text("Vegetariano").tag("Vegetariano")
+                }
+                .pickerStyle(MenuPickerStyle())
+            }
+        }
+    }
+    
+    private var preferencesView: some View {
+        VStack(spacing: 12) {
+            // Dietary Restrictions
+            VStack(alignment: .leading, spacing: 8) {
+                Text(strings.dietaryRestrictions)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 8) {
+                    ForEach(["Sin gluten", "Sin lácteos", "Vegano", "Bajo sodio"], id: \.self) { restriction in
+                        ToggleChip(
+                            text: restriction,
+                            isSelected: dietaryRestrictions.contains(restriction)
+                        ) {
+                            if dietaryRestrictions.contains(restriction) {
+                                dietaryRestrictions.removeAll { $0 == restriction }
+                            } else {
+                                dietaryRestrictions.append(restriction)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Medical Conditions
+            VStack(alignment: .leading, spacing: 8) {
+                Text(strings.medicalConditions)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 8) {
+                    ForEach(["Diabetes", "Hipertensión", "Renal", "Cardíaco"], id: \.self) { condition in
+                        ToggleChip(
+                            text: condition,
+                            isSelected: medicalConditions.contains(condition)
+                        ) {
+                            if medicalConditions.contains(condition) {
+                                medicalConditions.removeAll { $0 == condition }
+                            } else {
+                                medicalConditions.append(condition)
+                            }
+                        }
+                    }
                 }
             }
         }
-        .frame(minWidth: 400, minHeight: 300)
     }
     
-    private func createPatient() {
-        let patient = Patient(context: viewContext)
-        patient.id = UUID()
-        patient.firstName = firstName
-        patient.lastName = lastName
-        patient.dateOfBirth = Calendar.current.date(byAdding: .year, value: -30, to: Date()) // Default age
-        patient.gender = "Unknown"
-        patient.currentHeight = 170
-        patient.currentWeight = 70
-        patient.activityLevel = "Moderately Active"
-        patient.createdDate = Date()
-        patient.lastUpdated = Date()
+    private var generateButton: some View {
+        Button(action: generateMeal) {
+            HStack {
+                if isGenerating {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "brain.head.profile")
+                }
+                Text(isGenerating ? strings.generating : strings.generateMeal)
+            }
+            .font(.headline)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(isGenerating ? Color.gray : Color.blue)
+            .cornerRadius(10)
+        }
+        .disabled(isGenerating)
+    }
+    
+    private func resultDisplayView(suggestion: VerifiedMealPlanSuggestion) -> some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Meal Header
+                VStack(spacing: 8) {
+                    Text(suggestion.originalAISuggestion.mealName)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .multilineTextAlignment(.center)
+                    
+                    Text("\(suggestion.originalAISuggestion.estimatedCalories) kcal • \(suggestion.verifiedFoods.count) alimentos")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                
+                // Foods List
+                LazyVStack(spacing: 12) {
+                    ForEach(suggestion.verifiedFoods, id: \.originalAISuggestion.id) { verifiedFood in
+                        VerifiedFoodCard(verifiedFood: verifiedFood)
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Nutrition Summary
+                NutritionSummaryCard(suggestion: suggestion)
+                    .padding(.horizontal)
+                
+                Spacer(minLength: 20)
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private func generateMeal() {
+        isGenerating = true
+        errorMessage = nil
         
-        do {
-            try viewContext.save()
-            dismiss()
-        } catch {
-            print("Error creating patient: \(error)")
+        Task {
+            do {
+                let suggestion = try await verifiedService.generateVerifiedMealPlan(
+                    targetCalories: targetCalories,
+                    mealType: selectedMealType,
+                    cuisineType: selectedCuisine,
+                    dietaryRestrictions: dietaryRestrictions,
+                    medicalConditions: medicalConditions,
+                    language: languageManager.currentLanguage
+                )
+                
+                await MainActor.run {
+                    currentSuggestion = suggestion
+                    isGenerating = false
+                    showingSuccess = true
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isGenerating = false
+                }
+            }
         }
-    }
-}
-// MARK: - Basic Nutrition Fact Row
-struct BasicNutritionFactRow: View {
-    let nutrient: String
-    let value: String
-    let unit: String
-    
-    var body: some View {
-        HStack {
-            Text(nutrient)
-                .fontWeight(.medium)
-            
-            Spacer()
-            
-            Text("\(value)\(unit)")
-                .fontWeight(.bold)
-        }
-        .padding(.vertical, 4)
     }
 }
 
-// MARK: - Nutrition Facts Section (Missing Struct)
-struct NutritionFactsSection: View {
-    let title: String
-    let color: Color
-    let nutrients: [(String, Double, String)]
+// MARK: - Supporting Components
+struct ToggleChip: View {
+    let text: String
+    let isSelected: Bool
+    let action: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(color)
-            
-            VStack(spacing: 6) {
-                ForEach(Array(nutrients.enumerated()), id: \.offset) { _, nutrient in
-                    HStack {
-                        Text(nutrient.0)
-                            .fontWeight(.medium)
-                        
-                        Spacer()
-                        
-                        Text("\(String(format: "%.1f", nutrient.1)) \(nutrient.2)")
-                            .fontWeight(.bold)
+        Button(action: action) {
+            Text(text)
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
+                .foregroundColor(isSelected ? .white : .primary)
+                .cornerRadius(16)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct VerifiedFoodCard: View {
+    let verifiedFood: VerifiedSuggestedFood
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verifiedFood.originalAISuggestion.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("\(verifiedFood.originalAISuggestion.gramWeight)g")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                if verifiedFood.isVerified {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Verificado USDA")
+                            .font(.caption)
+                            .foregroundColor(.green)
                     }
-                    .padding(.vertical, 2)
                 }
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(Int(verifiedFood.verifiedNutrition.calories)) kcal")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("P: \(Int(verifiedFood.verifiedNutrition.protein))g")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()
-        .background(color.opacity(0.05))
+        .background(Color.white)
+        .cornerRadius(8)
+        .shadow(color: .black.opacity(0.05), radius: 1, x: 0, y: 1)
+    }
+}
+
+struct NutritionSummaryCard: View {
+    let suggestion: VerifiedMealPlanSuggestion
+    
+    var totalCalories: Double {
+        suggestion.verifiedFoods.reduce(0) { $0 + $1.verifiedNutrition.calories }
+    }
+    
+    var totalProtein: Double {
+        suggestion.verifiedFoods.reduce(0) { $0 + $1.verifiedNutrition.protein }
+    }
+    
+    var totalCarbs: Double {
+        suggestion.verifiedFoods.reduce(0) { $0 + $1.verifiedNutrition.carbohydrates }
+    }
+    
+    var totalFat: Double {
+        suggestion.verifiedFoods.reduce(0) { $0 + $1.verifiedNutrition.fat }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Resumen Nutricional")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            HStack(spacing: 20) {
+                NutritionItem(label: "Calorías", value: "\(Int(totalCalories))", unit: "kcal")
+                NutritionItem(label: "Proteína", value: "\(Int(totalProtein))", unit: "g")
+                NutritionItem(label: "Carbohidratos", value: "\(Int(totalCarbs))", unit: "g")
+                NutritionItem(label: "Grasa", value: "\(Int(totalFat))", unit: "g")
+            }
+        }
+        .padding()
+        .background(Color.blue.opacity(0.05))
         .cornerRadius(12)
     }
 }
 
+struct NutritionItem: View {
+    let label: String
+    let value: String
+    let unit: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.blue)
+            
+            Text(unit)
+                .font(.caption)
+                .foregroundColor(.blue)
+            
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
 
+// MARK: - Extensions for Localization
+extension MealType {
+    func localizedName(language: PlanLanguage) -> String {
+        switch language {
+        case .spanish:
+            switch self {
+            case .breakfast: return "Desayuno"
+            case .lunch: return "Almuerzo"
+            case .dinner: return "Cena"
+            case .snack: return "Merienda"
+            }
+        case .english:
+            switch self {
+            case .breakfast: return "Breakfast"
+            case .lunch: return "Lunch"
+            case .dinner: return "Dinner"
+            case .snack: return "Snack"
+            }
+        }
+    }
+}
 
-#Preview {
-    UpdatedContentView()
-        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+// MARK: - Placeholder Views (to be implemented)
+struct FixedFoodSearchView: View {
+    let usdaService: USDAFoodService
+    let foodManager: FoodDataManager
+    
+    var body: some View {
+        Text("Food Search - Coming Soon")
+    }
+}
+
+struct FixedSavedFoodsView: View {
+    let foodManager: FoodDataManager
+    
+    var body: some View {
+        Text("Saved Foods - Coming Soon")
+    }
+}
+
+struct FixedMealPlanningView: View {
+    var body: some View {
+        Text("Meal Planning - Coming Soon")
+    }
+}
+
+struct FixedEnhancedAIMealPlannerView: View {
+    var body: some View {
+        Text("Enhanced AI Meal Planner - Coming Soon")
+    }
+}
+
+struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack {
+            Text("Settings")
+                .font(.title)
+            
+            Button("Close") {
+                dismiss()
+            }
+        }
+        .padding()
+        .frame(width: 400, height: 300)
+    }
 }
