@@ -1,5 +1,0 @@
----
-triple:          'arm64-apple-darwin'
-binary-path:     '/Volumes/Macintosh HD/Users/diegosierra/Documents/MealPlanner/build/Release/MealPlannerPro.app/Contents/MacOS/MealPlannerPro'
-relocations:     []
-...

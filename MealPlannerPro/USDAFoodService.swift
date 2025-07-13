@@ -1,7 +1,7 @@
 import Foundation
 
 class USDAFoodService: ObservableObject {
-    private let apiKey = ""
+    private let apiKey = "example"
     private let baseURL = "https://api.nal.usda.gov/fdc/v1"
     
     private lazy var urlSession: URLSession = {
