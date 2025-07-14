@@ -76,13 +76,7 @@ struct MealPlanningView: View {
 }
 
 // MARK: - Meal Type Enum (if not already added)
-enum MealType: String, CaseIterable {
-    case breakfast = "breakfast"
-    case lunch = "lunch"
-    case dinner = "dinner"
-    case snack = "snack"
- 
-}
+// Note: MealType enum is defined in LanguageManager.swift to avoid conflicts
 
 // MARK: - Daily Meal Plan View
 struct DailyMealPlanView: View {

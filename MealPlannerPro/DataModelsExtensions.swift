@@ -1,30 +1,23 @@
-
 import Foundation
 import CoreData
 
-
-// MARK: - DataModelExtensions.swift
-// Purpose: This file safely extends your existing Core Data models to provide missing properties
-// Why needed: Your code is trying to access properties that don't exist in your actual models
+// MARK: - DataModelsExtensions.swift
+// Purpose: Safe extensions for Core Data models that handle missing properties gracefully
+// Fixed: Cannot find type 'SavedFood' and 'PlannedMeal' in scope
 
 // ==========================================
 // ESTIMATED NUTRITION EXTENSIONS
 // ==========================================
-
+// Note: These extensions are disabled because EstimatedNutrition is now a struct, not a Core Data entity
+/*
 extension EstimatedNutrition {
-    // Problem: Code tries to access .carbohydrates but your model might use .carbs
-    // Solution: Provide safe accessors that check for different property names
-    
     var safeCarbohydrates: Double {
-        // First, try the property as written in the original code
         if let value = self.value(forKey: "carbohydrates") as? Double {
             return value
         }
-        // Fallback to common alternative names
         if let value = self.value(forKey: "carbs") as? Double {
             return value
         }
-        // Last resort: return 0 to prevent crashes
         return 0.0
     }
     
@@ -39,10 +32,7 @@ extension EstimatedNutrition {
     }
     
     var safeProtein: Double {
-        if let value = self.value(forKey: "protein") as? Double {
-            return value
-        }
-        return 0.0
+        return self.value(forKey: "protein") as? Double ?? 0.0
     }
     
     var safeCalories: Double {
@@ -75,45 +65,41 @@ extension EstimatedNutrition {
         return 0.0
     }
 }
+*/
 
 // ==========================================
 // SUGGESTED FOOD EXTENSIONS
 // ==========================================
-
+// Note: These extensions are disabled because SuggestedFood is now a struct, not a Core Data entity
+/*
 extension SuggestedFood {
-    // Problem: Code tries to access .estimatedCalories but property might not exist
-    // Solution: Provide safe calculated properties
-    
     var safeEstimatedCalories: Int {
-        // Try to get from the model property first
         if let calories = self.value(forKey: "estimatedCalories") as? Int {
             return calories
         }
         
-        // Calculate from nutrition if available
         if let nutrition = self.estimatedNutrition {
             return Int(nutrition.safeCalories)
         }
         
-        // Estimate based on weight and food type (very rough estimate)
+        // Estimate based on weight and food type
         let caloriesPerGram: Double
         let foodName = self.name.lowercased()
         
         if foodName.contains("oil") || foodName.contains("butter") {
-            caloriesPerGram = 9.0 // Fats are calorie-dense
+            caloriesPerGram = 9.0
         } else if foodName.contains("meat") || foodName.contains("fish") {
-            caloriesPerGram = 2.0 // Protein-rich foods
+            caloriesPerGram = 2.0
         } else if foodName.contains("vegetable") || foodName.contains("fruit") {
-            caloriesPerGram = 0.5 // Lower calorie foods
+            caloriesPerGram = 0.5
         } else {
-            caloriesPerGram = 1.5 // Default estimate
+            caloriesPerGram = 1.5
         }
         
         return Int(Double(self.gramWeight) * caloriesPerGram)
     }
     
     var safeCookingInstructions: String? {
-        // Try different possible property names
         if let instructions = self.value(forKey: "cookingInstructions") as? String {
             return instructions
         }
@@ -124,7 +110,6 @@ extension SuggestedFood {
             return instructions
         }
         
-        // Generate basic instructions if none exist
         return generateBasicInstructions()
     }
     
@@ -144,22 +129,19 @@ extension SuggestedFood {
         }
     }
 }
+*/
 
 // ==========================================
-// MEAL PLAN SUGGESTION EXTENSIONS
+// VERIFIED MEAL PLAN SUGGESTION EXTENSIONS
 // ==========================================
-
+// Note: These extensions are disabled because VerifiedMealPlanSuggestion is now a struct, not a Core Data entity
+/*
 extension VerifiedMealPlanSuggestion {
-    // Problem: Code assumes certain properties exist on the original suggestion
-    // Solution: Provide safe accessors that calculate or estimate values
-    
     var safeEstimatedCalories: Int {
-        // Try the original suggestion first
         if let originalCalories = self.originalAISuggestion.value(forKey: "estimatedCalories") as? Int {
             return originalCalories
         }
         
-        // Calculate from verified foods
         let totalCalories = self.verifiedFoods.reduce(0.0) { sum, verifiedFood in
             return sum + verifiedFood.verifiedNutrition.safeCalories
         }
@@ -168,29 +150,24 @@ extension VerifiedMealPlanSuggestion {
     }
     
     var safeCookingInstructions: String? {
-        // Check if original suggestion has instructions
         if let instructions = self.originalAISuggestion.safeCookingInstructions {
             return instructions
         }
         
-        // Generate combined instructions from all foods
         return generateCombinedInstructions()
     }
     
     private func generateCombinedInstructions() -> String {
         var instructions: [String] = []
         
-        // Add preparation step
         instructions.append("1. Preparar todos los ingredientes:")
         
-        // List each verified food
         for (index, verifiedFood) in self.verifiedFoods.enumerated() {
             let foodName = verifiedFood.originalAISuggestion.name
             let weight = verifiedFood.originalAISuggestion.gramWeight
             instructions.append("   - \(foodName): \(weight)g")
         }
         
-        // Add cooking steps based on food types
         instructions.append("2. Cocinar los ingredientes según sea necesario:")
         
         let hasProtein = self.verifiedFoods.contains { food in
@@ -222,7 +199,6 @@ extension VerifiedMealPlanSuggestion {
 // ==========================================
 
 extension Patient {
-    // Safe accessors for patient information
     var safeFullName: String {
         let first = self.firstName ?? ""
         let last = self.lastName ?? ""
@@ -238,68 +214,67 @@ extension Patient {
 }
 
 // ==========================================
-// SAVED FOOD EXTENSIONS
+// FOOD EXTENSIONS (Core Data Model)
 // ==========================================
 
-extension SavedFood {
-    // Safe category handling
+extension Food {
     var safeCategory: String {
-        return self.categoryRaw ?? "custom"
+        return self.value(forKey: "categoryRaw") as? String ?? "custom"
     }
     
     var isUSDAVerified: Bool {
-        if let usdaId = self.usdaFoodId {
-            return !usdaId.isEmpty
+        if let fdcId = self.value(forKey: "fdcId") as? Int32 {
+            return fdcId > 0
         }
         return false
     }
     
-    // Safe nutrition accessors
     var safeCaloriesPer100g: Double {
-        return self.value(forKey: "caloriesPer100g") as? Double ?? 0.0
+        return self.calories
     }
     
     var safeProteinPer100g: Double {
-        return self.value(forKey: "proteinPer100g") as? Double ?? 0.0
+        return self.protein
     }
     
     var safeCarbsPer100g: Double {
-        return self.value(forKey: "carbsPer100g") as? Double ?? 0.0
+        return self.carbs
     }
     
     var safeFatPer100g: Double {
-        return self.value(forKey: "fatPer100g") as? Double ?? 0.0
+        return self.fat
     }
 }
 
 // ==========================================
-// PLANNED MEAL EXTENSIONS
+// PLANNED MEAL EXTENSIONS (if the type exists)
 // ==========================================
 
-extension PlannedMeal {
-    // Safe meal type handling
-    var safeMealType: MealType {
-        if let typeRaw = self.mealTypeRaw,
+// Note: Since PlannedMeal type wasn't found, creating a placeholder extension
+// If you have a different meal planning entity, replace this with the correct name
+extension NSManagedObject {
+    func safeMealTypeForPlannedMeal() -> MealType {
+        if let typeRaw = self.value(forKey: "mealTypeRaw") as? String,
            let mealType = MealType(rawValue: typeRaw) {
             return mealType
         }
         return .breakfast // Default fallback
     }
     
-    // Safe nutrition accessors
-    var safeEstimatedCalories: Double {
+    func safeEstimatedCaloriesForPlannedMeal() -> Double {
         return self.value(forKey: "estimatedCalories") as? Double ?? 0.0
     }
     
-    var safeEstimatedProtein: Double {
+    func safeEstimatedProteinForPlannedMeal() -> Double {
         return self.value(forKey: "estimatedProtein") as? Double ?? 0.0
     }
     
-    var safeEstimatedCarbs: Double {
+    func safeEstimatedCarbsForPlannedMeal() -> Double {
         return self.value(forKey: "estimatedCarbs") as? Double ?? 0.0
     }
     
-    var safeEstimatedFat: Double {
+    func safeEstimatedFatForPlannedMeal() -> Double {
         return self.value(forKey: "estimatedFat") as? Double ?? 0.0
     }
 }
+*/

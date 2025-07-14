@@ -7,8 +7,9 @@ class MultiDayMealPlanningService: ObservableObject {
     @Published var currentProgress = 0
     @Published var totalProgress = 0
     @Published var lastError: String?
+    @Published var currentPlan: MultiDayMealPlan?
     
-    private let verifiedMealService = USDAVerifiedMealPlanningService()
+    private let verifiedMealService = USDAVerifiedMealPlanningService.shared
     
     // MARK: - Expose Verification Service for UI
     var verificationService: USDAVerifiedMealPlanningService {
@@ -16,12 +17,12 @@ class MultiDayMealPlanningService: ObservableObject {
     }
     
     // MARK: - Generate Multi-Day Plan
-    func generateMultiDayPlan(request: MultiDayPlanRequest) async throws -> MultiDayMealPlan {
+    func generateMultiDayPlan(configuration: MultiDayPlanConfiguration) async throws -> MultiDayMealPlan {
         await MainActor.run {
             isGenerating = true
             lastError = nil
             currentProgress = 0
-            totalProgress = request.numberOfDays * request.mealsPerDay.count
+            totalProgress = configuration.numberOfDays * configuration.mealsPerDay.count
         }
         
         defer {
@@ -35,47 +36,53 @@ class MultiDayMealPlanningService: ObservableObject {
         var dailyPlans: [DailyMealPlan] = []
         
         // Generate plan for each day
-        for dayIndex in 0..<request.numberOfDays {
-            print("📅 Generating day \(dayIndex + 1) of \(request.numberOfDays)")
+        for dayIndex in 0..<configuration.numberOfDays {
+            print("📅 Generating day \(dayIndex + 1) of \(configuration.numberOfDays)")
             
             let dailyPlan = try await generateSingleDayPlan(
                 dayNumber: dayIndex + 1,
-                request: request,
+                configuration: configuration,
                 previousDays: dailyPlans // For variety
             )
             
             dailyPlans.append(dailyPlan)
         }
         
-        return MultiDayMealPlan(
+        let plan = MultiDayMealPlan(
             id: UUID(),
-            patientId: request.patientId,
-            startDate: request.startDate,
-            numberOfDays: request.numberOfDays,
+            patientId: configuration.patientId,
+            startDate: configuration.startDate,
+            numberOfDays: configuration.numberOfDays,
             dailyPlans: dailyPlans,
             totalNutritionSummary: calculateTotalNutrition(dailyPlans: dailyPlans),
-            language: request.language,
+            language: configuration.language,
             generatedDate: Date()
         )
+        
+        await MainActor.run {
+            currentPlan = plan
+        }
+        
+        return plan
     }
     
     // MARK: - Generate Single Day Plan
     private func generateSingleDayPlan(
         dayNumber: Int,
-        request: MultiDayPlanRequest,
+        configuration: MultiDayPlanConfiguration,
         previousDays: [DailyMealPlan]
     ) async throws -> DailyMealPlan {
         
         var meals: [VerifiedMealPlanSuggestion] = []
-        let date = Calendar.current.date(byAdding: .day, value: dayNumber - 1, to: request.startDate) ?? request.startDate
+        let date = Calendar.current.date(byAdding: .day, value: dayNumber - 1, to: configuration.startDate) ?? configuration.startDate
         
         // Generate each meal for this day
-        for mealType in request.mealsPerDay {
+        for mealType in configuration.mealsPerDay {
                         
             // Create meal request with variety considerations
             let mealRequest = createMealRequest(
                 for: mealType,
-                baseRequest: request,
+                baseConfiguration: configuration,
                 dayNumber: dayNumber,
                 previousMeals: getAllPreviousMeals(from: previousDays, meals: meals)
             )
@@ -99,14 +106,14 @@ class MultiDayMealPlanningService: ObservableObject {
     // MARK: - Create Meal Request with Variety
     private func createMealRequest(
         for mealType: MealType,
-        baseRequest: MultiDayPlanRequest,
+        baseConfiguration: MultiDayPlanConfiguration,
         dayNumber: Int,
         previousMeals: [VerifiedMealPlanSuggestion]
     ) -> MealPlanRequest {
         
         // Calculate calories for this meal type
         let mealCalories = calculateMealCalories(
-            totalDailyCalories: baseRequest.dailyCalories,
+            totalDailyCalories: baseConfiguration.dailyCalories,
             mealType: mealType
         )
         
@@ -116,20 +123,20 @@ class MultiDayMealPlanningService: ObservableObject {
             usedIngredients: usedIngredients,
             dayNumber: dayNumber,
             mealType: mealType,
-            cuisine: baseRequest.cuisineRotation
+            cuisine: baseConfiguration.cuisineRotation
         )
         
-        return MealPlanRequest(targetCalories: mealCalories,
-            targetProtein: baseRequest.dailyProtein * Double(mealCalories) / Double(baseRequest.dailyCalories),
-            targetCarbs: baseRequest.dailyCarbs * Double(mealCalories) / Double(baseRequest.dailyCalories),
-            targetFat: baseRequest.dailyFat * Double(mealCalories) / Double(baseRequest.dailyCalories),
+        return MealPlanRequest(
+            targetCalories: mealCalories,
+            targetProtein: baseConfiguration.dailyProtein * Double(mealCalories) / Double(baseConfiguration.dailyCalories),
+            targetCarbs: baseConfiguration.dailyCarbs * Double(mealCalories) / Double(baseConfiguration.dailyCalories),
+            targetFat: baseConfiguration.dailyFat * Double(mealCalories) / Double(baseConfiguration.dailyCalories),
             mealType: mealType,
             cuisinePreference: varietyInstructions.cuisine,
-            dietaryRestrictions: baseRequest.dietaryRestrictions,
-            medicalConditions: baseRequest.medicalConditions,
-            patientId: baseRequest.patientId,
-            varietyInstructions: varietyInstructions.instructions, // New field
-            language: baseRequest.language)
+            dietaryRestrictions: baseConfiguration.dietaryRestrictions,
+            medicalConditions: baseConfiguration.medicalConditions,
+            patientId: baseConfiguration.patientId
+        )
     }
     
     // MARK: - Helper Functions
@@ -252,7 +259,7 @@ class MultiDayMealPlanningService: ObservableObject {
 }
 
 // MARK: - Multi-Day Data Models
-struct MultiDayPlanRequest {
+struct MultiDayPlanConfiguration {
     let patientId: UUID?
     let numberOfDays: Int
     let startDate: Date
@@ -310,24 +317,7 @@ struct MultiDayNutritionSummary {
 }
 
 // MARK: - Language Support
-enum PlanLanguage: String, CaseIterable {
-    case english = "en"
-    case spanish = "es"
-    
-    var displayName: String {
-        switch self {
-        case .english: return "English"
-        case .spanish: return "Español"
-        }
-    }
-    
-    var localized: LocalizedStrings {
-        switch self {
-        case .english: return EnglishStrings()
-        case .spanish: return SpanishStrings()
-        }
-    }
-}
+// Note: PlanLanguage is defined in LanguageManager.swift to avoid conflicts
 
 // MARK: - Localization Protocol
 protocol LocalizedStrings {
@@ -398,19 +388,19 @@ extension MultiDayMealPlanningService {
         
         func createVarietyConstraints(
             for dayNumber: Int,
-            request: MultiDayPlanRequest,
+            configuration: MultiDayPlanConfiguration,
             previousDays: [DailyMealPlan]
         ) -> VarietyConstraints {
             
             let recentIngredients = extractRecentIngredients(from: previousDays, dayNumber: dayNumber)
             let recentCuisines = extractRecentCuisines(from: previousDays, dayNumber: dayNumber)
-            let nutritionGaps = identifyNutritionGaps(from: previousDays, targetGoals: request)
+            let nutritionGaps = identifyNutritionGaps(from: previousDays, targetGoals: configuration)
             
             return VarietyConstraints(
                 avoidIngredients: recentIngredients,
                 preferredCuisine: selectOptimalCuisine(
                     dayNumber: dayNumber,
-                    availableCuisines: request.cuisineRotation,
+                    availableCuisines: configuration.cuisineRotation,
                     recentCuisines: recentCuisines
                 ),
                 nutritionPriorities: nutritionGaps,
@@ -465,7 +455,7 @@ extension MultiDayMealPlanningService {
             return cuisines
         }
         
-        private func identifyNutritionGaps(from previousDays: [DailyMealPlan], targetGoals: MultiDayPlanRequest) -> [NutritionPriority] {
+        private func identifyNutritionGaps(from previousDays: [DailyMealPlan], targetGoals: MultiDayPlanConfiguration) -> [NutritionPriority] {
             guard !previousDays.isEmpty else { return [] }
             
             var priorities: [NutritionPriority] = []
@@ -614,7 +604,7 @@ extension MultiDayMealPlanningService {
         }
         
         private func identifyCuisineFromMeal(_ meal: VerifiedMealPlanSuggestion) -> String? {
-            let mealName = meal.originalAISuggestion.mealName.lowercased()
+            let mealName = meal.originalAISuggestion.name.lowercased()
             
             let cuisineKeywords: [String: [String]] = [
                 "Mexicano": ["taco", "burrito", "salsa", "avocado", "lime", "cilantro"],
@@ -637,28 +627,28 @@ extension MultiDayMealPlanningService {
     // MARK: - Enhanced Day Generation with Variety Constraints
     func generateSingleDayPlanWithVariety(
         dayNumber: Int,
-        request: MultiDayPlanRequest,
+        configuration: MultiDayPlanConfiguration,
         previousDays: [DailyMealPlan]
     ) async throws -> DailyMealPlan {
         
         let varietyManager = VarietyManager()
         let varietyConstraints = varietyManager.createVarietyConstraints(
             for: dayNumber,
-            request: request,
+            configuration: configuration,
             previousDays: previousDays
         )
         
         var meals: [VerifiedMealPlanSuggestion] = []
-        let date = Calendar.current.date(byAdding: .day, value: dayNumber - 1, to: request.startDate) ?? request.startDate
+        let date = Calendar.current.date(byAdding: .day, value: dayNumber - 1, to: configuration.startDate) ?? configuration.startDate
         
         print("📅 Generating day \(dayNumber) with variety constraints:")
         print("  - Preferred cuisine: \(varietyConstraints.preferredCuisine ?? "Any")")
         print("  - Avoiding ingredients: \(varietyConstraints.avoidIngredients.count) items")
         
-        for mealType in request.mealsPerDay {
+        for mealType in configuration.mealsPerDay {
             let mealRequest = createVarietyAwareMealRequest(
                 for: mealType,
-                baseRequest: request,
+                baseConfiguration: configuration,
                 varietyConstraints: varietyConstraints,
                 existingMealsToday: meals
             )
@@ -680,13 +670,13 @@ extension MultiDayMealPlanningService {
     
     private func createVarietyAwareMealRequest(
         for mealType: MealType,
-        baseRequest: MultiDayPlanRequest,
+        baseConfiguration: MultiDayPlanConfiguration,
         varietyConstraints: VarietyConstraints,
         existingMealsToday: [VerifiedMealPlanSuggestion]
     ) -> MealPlanRequest {
         
         let mealCalories = calculateMealCalories(
-            totalDailyCalories: baseRequest.dailyCalories,
+            totalDailyCalories: baseConfiguration.dailyCalories,
             mealType: mealType
         )
         
@@ -709,16 +699,14 @@ extension MultiDayMealPlanningService {
         
         return MealPlanRequest(
             targetCalories: mealCalories,
-            targetProtein: baseRequest.dailyProtein * Double(mealCalories) / Double(baseRequest.dailyCalories),
-            targetCarbs: baseRequest.dailyCarbs * Double(mealCalories) / Double(baseRequest.dailyCalories),
-            targetFat: baseRequest.dailyFat * Double(mealCalories) / Double(baseRequest.dailyCalories),
+            targetProtein: baseConfiguration.dailyProtein * Double(mealCalories) / Double(baseConfiguration.dailyCalories),
+            targetCarbs: baseConfiguration.dailyCarbs * Double(mealCalories) / Double(baseConfiguration.dailyCalories),
+            targetFat: baseConfiguration.dailyFat * Double(mealCalories) / Double(baseConfiguration.dailyCalories),
             mealType: mealType,
             cuisinePreference: varietyConstraints.preferredCuisine,
-            dietaryRestrictions: baseRequest.dietaryRestrictions,
-            medicalConditions: baseRequest.medicalConditions,
-            patientId: baseRequest.patientId,
-            varietyInstructions: varietyInstructions,
-            language: baseRequest.language
+            dietaryRestrictions: baseConfiguration.dietaryRestrictions,
+            medicalConditions: baseConfiguration.medicalConditions,
+            patientId: baseConfiguration.patientId
         )
     }
 }
@@ -739,32 +727,3 @@ enum NutritionPriority {
     case increaseProteinVariety
 }
 
-// MARK: - Enhanced MealPlanRequest with Variety Support
-extension MealPlanRequest {
-    init(
-        targetCalories: Int,
-        targetProtein: Double,
-        targetCarbs: Double,
-        targetFat: Double,
-        mealType: MealType,
-        cuisinePreference: String?,
-        dietaryRestrictions: [String],
-        medicalConditions: [String],
-        patientId: UUID?,
-        varietyInstructions: String?,
-        language: PlanLanguage
-    ) {
-        self.init(
-            targetCalories: targetCalories,
-            targetProtein: targetProtein,
-            targetCarbs: targetCarbs,
-            targetFat: targetFat,
-            mealType: mealType,
-            cuisinePreference: cuisinePreference,
-            dietaryRestrictions: dietaryRestrictions,
-            medicalConditions: medicalConditions,
-            patientId: patientId
-        )
-        // Note: We'll need to add these properties to the base struct
-    }
-}

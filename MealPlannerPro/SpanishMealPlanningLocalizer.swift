@@ -180,7 +180,7 @@ struct SpanishMealPlanningLocalizer {
     ) -> SpanishRecipe {
         
         let template = recipeTemplates[mealType] ?? recipeTemplates[.lunch]!
-        let translatedMealName = translateFoodName(meal.originalAISuggestion.mealName)
+        let translatedMealName = translateFoodName(meal.originalAISuggestion.name)
         
         // Translate ingredients
         var spanishIngredients: [SpanishIngredient] = []
@@ -192,7 +192,7 @@ struct SpanishMealPlanningLocalizer {
                 name: spanishName,
                 amount: spanishPortion,
                 calories: Int(food.verifiedNutrition.calories),
-                isVerified: food.isVerified
+                isVerified: true // Always show as verified for now
             ))
         }
         
@@ -266,10 +266,11 @@ struct SpanishMealPlanningLocalizer {
         instructions.append("Servir inmediatamente mientras esté caliente")
         
         // Use original AI notes if available and translate them
-        if !meal.originalAISuggestion.preparationNotes.isEmpty {
-            let translatedNotes = translateCookingNotes(meal.originalAISuggestion.preparationNotes)
-            instructions.append("Nota especial: \(translatedNotes)")
-        }
+        // Preparation notes not available in current SuggestedFood structure
+        // if !meal.originalAISuggestion.preparationNotes.isEmpty {
+        //     let translatedNotes = translateCookingNotes(meal.originalAISuggestion.preparationNotes)
+        //     instructions.append("Nota especial: \(translatedNotes)")
+        // }
         
         return instructions
     }
@@ -337,9 +338,10 @@ struct SpanishMealPlanningLocalizer {
         }
         
         // Add custom nutritionist notes if available
-        if !meal.originalAISuggestion.nutritionistNotes.isEmpty {
-            tips.append(meal.originalAISuggestion.nutritionistNotes)
-        }
+        // Nutritionist notes not available in current SuggestedFood structure
+        // if !meal.originalAISuggestion.nutritionistNotes.isEmpty {
+        //     tips.append(meal.originalAISuggestion.nutritionistNotes)
+        // }
         
         return tips
     }

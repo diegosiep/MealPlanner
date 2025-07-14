@@ -3,7 +3,8 @@
     "allow": [
       "Bash(xcodebuild:*)",
       "Bash(timeout 30 xcodebuild:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(swiftc:*)"
     ],
     "deny": []
   }

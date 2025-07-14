@@ -1096,52 +1096,7 @@ enum LLMError: Error, LocalizedError {
 
 
 // MARK: - USDA Verification Data Models
-// ADD THESE TO THE BOTTOM OF YOUR EXISTING LLMService.swift FILE
-
-struct VerifiedMealPlanSuggestion {
-    let originalAISuggestion: MealPlanSuggestion
-    let verifiedFoods: [VerifiedSuggestedFood]
-    let verifiedTotalNutrition: EstimatedNutrition
-    let overallAccuracy: Double
-    let detailedAccuracy: DetailedAccuracy
-    let verificationNotes: String
-}
-
-struct VerifiedSuggestedFood {
-    let originalAISuggestion: SuggestedFood
-    let matchedUSDAFood: USDAFood?
-    let verifiedNutrition: EstimatedNutrition
-    let matchConfidence: Double
-    let isVerified: Bool
-    let verificationNotes: String
-}
-
-struct DetailedAccuracy {
-    let overall: Double
-    let calories: Double
-    let protein: Double
-    let carbs: Double
-    let fat: Double
-    
-    var grade: String {
-        switch overall {
-        case 0.95...: return "A+"
-        case 0.90...: return "A"
-        case 0.85...: return "B+"
-        case 0.80...: return "B"
-        case 0.75...: return "C+"
-        default: return "C"
-        }
-    }
-    
-    var color: Color {
-        switch overall {
-        case 0.90...: return .green
-        case 0.80...: return .orange
-        default: return .red
-        }
-    }
-}
+// Note: VerifiedMealPlanSuggestion and related types are defined in USDAVerifiedMealPlanningService.swift to avoid conflicts
 
 
 // MARK: - Enhanced Claude Prompting for USDA Compatibility

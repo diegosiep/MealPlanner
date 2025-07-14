@@ -1,43 +1,21 @@
 import SwiftUI
 import Foundation
 
-// MARK: - Global Language Manager
-class LanguageManager: ObservableObject {
-    @Published var currentLanguage: PlanLanguage = .spanish
-    @Published var isLanguageMenuOpen = false
-    
-    static let shared = LanguageManager()
-    
-    private init() {
-        // Load saved language preference
-        if let savedLanguage = UserDefaults.standard.object(forKey: "selectedLanguage") as? String,
-           let language = PlanLanguage(rawValue: savedLanguage) {
-            currentLanguage = language
-        }
-    }
-    
-    func setLanguage(_ language: PlanLanguage) {
-        currentLanguage = language
-        UserDefaults.standard.set(language.rawValue, forKey: "selectedLanguage")
-        
-        // Post notification for other parts of the app
-        NotificationCenter.default.post(name: .languageChanged, object: language)
-    }
-    
-    func toggleLanguage() {
-        let newLanguage: PlanLanguage = currentLanguage == .spanish ? .english : .spanish
-        setLanguage(newLanguage)
-    }
-}
+// MARK: - LanguageManager.swift
+// Fixed: Invalid redeclarations of displayName, SpanishStrings, EnglishStrings, LanguageSwitcher
 
-// MARK: - Enhanced Localization System
-extension PlanLanguage {
-    var appStrings: AppLocalizedStrings {
+// ==========================================
+// CORE LANGUAGE ENUM
+// ==========================================
+
+enum PlanLanguage: String, CaseIterable {
+    case spanish = "es"
+    case english = "en"
+    
+    var displayName: String {
         switch self {
-        case .spanish:
-            return SpanishStrings()
-        case .english:
-            return EnglishStrings()
+        case .spanish: return "Español"
+        case .english: return "English"
         }
     }
     
@@ -48,15 +26,49 @@ extension PlanLanguage {
         }
     }
     
-    var displayName: String {
+    var appStrings: AppLocalizedStrings {
         switch self {
-        case .spanish: return "Español"
-        case .english: return "English"
+        case .spanish:
+            return SpanishLocalizedStrings()
+        case .english:
+            return EnglishLocalizedStrings()
         }
     }
 }
 
-// MARK: - Comprehensive App Strings Protocol
+// ==========================================
+// LANGUAGE MANAGER CLASS
+// ==========================================
+
+class LanguageManager: ObservableObject {
+    @Published var currentLanguage: PlanLanguage = .spanish
+    @Published var isLanguageMenuOpen = false
+    
+    static let shared = LanguageManager()
+    
+    private init() {
+        if let savedLanguage = UserDefaults.standard.object(forKey: "selectedLanguage") as? String,
+           let language = PlanLanguage(rawValue: savedLanguage) {
+            currentLanguage = language
+        }
+    }
+    
+    func setLanguage(_ language: PlanLanguage) {
+        currentLanguage = language
+        UserDefaults.standard.set(language.rawValue, forKey: "selectedLanguage")
+        NotificationCenter.default.post(name: .languageChanged, object: language)
+    }
+    
+    func toggleLanguage() {
+        let newLanguage: PlanLanguage = currentLanguage == .spanish ? .english : .spanish
+        setLanguage(newLanguage)
+    }
+}
+
+// ==========================================
+// LOCALIZATION PROTOCOL
+// ==========================================
+
 protocol AppLocalizedStrings {
     // Navigation
     var foodSearch: String { get }
@@ -121,8 +133,11 @@ protocol AppLocalizedStrings {
     var retry: String { get }
 }
 
-// MARK: - Spanish Localization
-struct SpanishStrings: AppLocalizedStrings {
+// ==========================================
+// SPANISH LOCALIZATION
+// ==========================================
+
+struct SpanishLocalizedStrings: AppLocalizedStrings {
     // Navigation
     let foodSearch = "Buscar Alimentos"
     let myFoods = "Mis Alimentos"
@@ -150,26 +165,26 @@ struct SpanishStrings: AppLocalizedStrings {
     
     // Food Search
     let searchFoods = "Buscar Alimentos"
-    let searchPlaceholder = "Escribe el nombre del alimento..."
+    let searchPlaceholder = "Escriba el nombre del alimento..."
     let noResults = "No se encontraron resultados"
     let loading = "Cargando..."
     let addToFavorites = "Agregar a Favoritos"
     
     // PDF Export
-    let exportOptions = "📤 Opciones de Exportación"
-    let includeInPDF = "Incluir en el PDF:"
-    let detailedRecipes = "📝 Recetas detalladas"
-    let shoppingList = "🛒 Lista de compras"
-    let nutritionalAnalysis = "📊 Análisis nutricional"
+    let exportOptions = "Opciones de Exportación"
+    let includeInPDF = "Incluir en PDF"
+    let detailedRecipes = "Recetas Detalladas"
+    let shoppingList = "Lista de Compras"
+    let nutritionalAnalysis = "Análisis Nutricional"
     let generateCompletePDF = "Generar PDF Completo"
     let generatingPDF = "Generando PDF..."
-    let pdfGenerated = "PDF Generado Exitosamente"
+    let pdfGenerated = "PDF Generado"
     let pdfError = "Error al generar PDF"
     
     // Food Matching
-    let verifyFoodSelection = "Verificar Selección de Alimento"
-    let selectAccurateMatch = "Selecciona la coincidencia más precisa de la base de datos USDA:"
-    let skipThisFood = "Omitir Este Alimento"
+    let verifyFoodSelection = "Verificar Selección de Alimentos"
+    let selectAccurateMatch = "Selecciona la opción más precisa:"
+    let skipThisFood = "Omitir este Alimento"
     let useSelected = "Usar Seleccionado"
     let nutritionInfo = "Información Nutricional"
     let confidence = "Confianza"
@@ -186,10 +201,13 @@ struct SpanishStrings: AppLocalizedStrings {
     let retry = "Reintentar"
 }
 
-// MARK: - English Localization
-struct EnglishStrings: AppLocalizedStrings {
+// ==========================================
+// ENGLISH LOCALIZATION
+// ==========================================
+
+struct EnglishLocalizedStrings: AppLocalizedStrings {
     // Navigation
-    let foodSearch = "Search Foods"
+    let foodSearch = "Food Search"
     let myFoods = "My Foods"
     let basicPlans = "Basic Plans"
     let aiAssistant = "AI Assistant"
@@ -215,25 +233,25 @@ struct EnglishStrings: AppLocalizedStrings {
     
     // Food Search
     let searchFoods = "Search Foods"
-    let searchPlaceholder = "Type food name..."
+    let searchPlaceholder = "Enter food name..."
     let noResults = "No results found"
     let loading = "Loading..."
     let addToFavorites = "Add to Favorites"
     
     // PDF Export
-    let exportOptions = "📤 Export Options"
-    let includeInPDF = "Include in PDF:"
-    let detailedRecipes = "📝 Detailed recipes"
-    let shoppingList = "🛒 Shopping list"
-    let nutritionalAnalysis = "📊 Nutritional analysis"
+    let exportOptions = "Export Options"
+    let includeInPDF = "Include in PDF"
+    let detailedRecipes = "Detailed Recipes"
+    let shoppingList = "Shopping List"
+    let nutritionalAnalysis = "Nutritional Analysis"
     let generateCompletePDF = "Generate Complete PDF"
     let generatingPDF = "Generating PDF..."
-    let pdfGenerated = "PDF Generated Successfully"
+    let pdfGenerated = "PDF Generated"
     let pdfError = "PDF Generation Error"
     
     // Food Matching
     let verifyFoodSelection = "Verify Food Selection"
-    let selectAccurateMatch = "Select the most accurate match from USDA database:"
+    let selectAccurateMatch = "Select the most accurate match:"
     let skipThisFood = "Skip This Food"
     let useSelected = "Use Selected"
     let nutritionInfo = "Nutrition Information"
@@ -251,28 +269,18 @@ struct EnglishStrings: AppLocalizedStrings {
     let retry = "Retry"
 }
 
-// MARK: - Language Switcher Component
-struct LanguageSwitcher: View {
-    @ObservedObject var languageManager = LanguageManager.shared
+// ==========================================
+// LANGUAGE SWITCHER COMPONENT
+// ==========================================
+
+struct LanguageSwitcherView: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
     
     var body: some View {
-        Menu {
-            ForEach([PlanLanguage.spanish, PlanLanguage.english], id: \.self) { language in
-                Button(action: {
-                    languageManager.setLanguage(language)
-                }) {
-                    HStack {
-                        Text(language.flag)
-                        Text(language.displayName)
-                        if languageManager.currentLanguage == language {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
+        Button(action: {
+            languageManager.toggleLanguage()
+        }) {
+            HStack(spacing: 8) {
                 Text(languageManager.currentLanguage.flag)
                 Text(languageManager.currentLanguage.displayName)
                 Image(systemName: "chevron.down")
@@ -283,15 +291,22 @@ struct LanguageSwitcher: View {
             .background(Color.blue.opacity(0.1))
             .cornerRadius(8)
         }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
-// MARK: - Notification Extension
+// ==========================================
+// NOTIFICATION EXTENSION
+// ==========================================
+
 extension Notification.Name {
     static let languageChanged = Notification.Name("languageChanged")
 }
 
-// MARK: - View Modifier for Automatic Language Updates
+// ==========================================
+// VIEW MODIFIER FOR LANGUAGE UPDATES
+// ==========================================
+
 struct LanguageUpdateModifier: ViewModifier {
     @ObservedObject var languageManager = LanguageManager.shared
     
@@ -306,5 +321,40 @@ struct LanguageUpdateModifier: ViewModifier {
 extension View {
     func languageUpdatable() -> some View {
         modifier(LanguageUpdateModifier())
+    }
+}
+
+// ==========================================
+// MEAL TYPE LOCALIZATION
+// ==========================================
+
+enum MealType: String, CaseIterable {
+    case breakfast = "breakfast"
+    case lunch = "lunch"
+    case dinner = "dinner"
+    case snack = "snack"
+    
+    var displayName: String {
+        return localizedName
+    }
+    
+    var localizedName: String {
+        let languageManager = LanguageManager.shared
+        switch languageManager.currentLanguage {
+        case .spanish:
+            switch self {
+            case .breakfast: return "Desayuno"
+            case .lunch: return "Almuerzo"
+            case .dinner: return "Cena"
+            case .snack: return "Merienda"
+            }
+        case .english:
+            switch self {
+            case .breakfast: return "Breakfast"
+            case .lunch: return "Lunch"
+            case .dinner: return "Dinner"
+            case .snack: return "Snack"
+            }
+        }
     }
 }

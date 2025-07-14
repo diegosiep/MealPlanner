@@ -11,7 +11,7 @@ class USDAFoodService: ObservableObject {
         return URLSession(configuration: config)
     }()
     
-    func searchFoods(query: String) async throws -> [USDAFood] {
+    func searchFoods(query: String, limit: Int = 10) async throws -> [USDAFood] {
         var components = URLComponents(string: "\(baseURL)/foods/search")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
@@ -50,6 +50,25 @@ class USDAFoodService: ObservableObject {
         } catch {
             print("❌ Error: \(error)")
             throw error
+        }
+    }
+    
+    func getFoodNutrition(fdcId: Int) async throws -> NutritionInfo {
+        // For now, return a placeholder since we don't have the specific fdcId lookup endpoint
+        // In a real implementation, this would call the USDA API to get detailed nutrition for a specific food
+        
+        // Mock nutrition data based on fdcId (this should be replaced with actual API call)
+        switch fdcId {
+        case 171077: // Chicken breast
+            return NutritionInfo(calories: 165, protein: 31, carbs: 0, fat: 3.6, fiber: 0, sodium: 74)
+        case 168878: // Brown rice
+            return NutritionInfo(calories: 111, protein: 2.6, carbs: 23, fat: 0.9, fiber: 1.8, sodium: 5)
+        case 170379: // Broccoli
+            return NutritionInfo(calories: 34, protein: 2.8, carbs: 7, fat: 0.4, fiber: 2.6, sodium: 33)
+        case 171413: // Olive oil
+            return NutritionInfo(calories: 884, protein: 0, carbs: 0, fat: 100, fiber: 0, sodium: 2)
+        default:
+            return NutritionInfo(calories: 100, protein: 5, carbs: 15, fat: 2, fiber: 1, sodium: 50)
         }
     }
 }

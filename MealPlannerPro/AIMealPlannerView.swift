@@ -245,11 +245,7 @@ struct AIMealPlannerView: View {
                     ProgressView()
                         .scaleEffect(0.8)
                     
-                    if verifiedService.isVerifying {
-                        Text("Verificando con USDA...")
-                    } else {
-                        Text("Generando sugerencia...")
-                    }
+                    Text("Generando sugerencia...")
                 } else {
                     Image(systemName: "brain.head.profile.fill")
                     Text("Generar Comida con IA + USDA")
@@ -407,16 +403,8 @@ struct AIMealPlannerView: View {
 }
 
 // MARK: - MealType Extension for Display
-extension MealType {
-    var displayName: String {
-        switch self {
-        case .breakfast: return "Desayuno"
-        case .lunch: return "Almuerzo"
-        case .dinner: return "Cena"
-        case .snack: return "Merienda"
-        }
-    }
-    
+// Note: displayName is already defined in LanguageManager.swift
+extension MealType {    
     var emoji: String {
         switch self {
         case .breakfast: return "🌅"
@@ -424,5 +412,25 @@ extension MealType {
         case .dinner: return "🌙"
         case .snack: return "🍎"
         }
+    }
+}
+
+// MARK: - RestrictionToggle Component
+struct RestrictionToggle: View {
+    let restriction: String
+    let isSelected: Bool
+    let toggle: () -> Void
+    
+    var body: some View {
+        Button(action: toggle) {
+            Text(restriction)
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
+                .foregroundColor(isSelected ? .white : .primary)
+                .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
     }
 }
