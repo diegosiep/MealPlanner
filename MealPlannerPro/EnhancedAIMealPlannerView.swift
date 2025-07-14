@@ -14,7 +14,7 @@ import AppKit
 // MARK: - Enhanced Multi-Day Meal Planner View
 struct EnhancedAIMealPlannerView: View {
     @StateObject private var multiDayService = MultiDayMealPlanningService()
-    @StateObject private var pdfService = FixedMealPlanPDFService()
+    @StateObject private var pdfService = RobustPDFService()
     @StateObject private var usdaService = USDAFoodService()
     
     @State private var selectedPatient: Patient?
@@ -978,7 +978,7 @@ struct MealSummaryCard: View {
 struct ExportOptionsView: View {
     let plan: MultiDayMealPlan
     let patient: Patient?
-    @ObservedObject var pdfService: FixedMealPlanPDFService
+    @ObservedObject var pdfService: RobustPDFService
     let onPDFGenerated: (Data) -> Void
     
     @State private var includeRecipes = true

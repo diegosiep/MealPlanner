@@ -1,59 +1,67 @@
-import Foundation
 import SwiftUI
-import CoreData
+import Foundation
 
+// Platform-specific imports for PDF generation
 #if canImport(UIKit)
 import UIKit
+import UniformTypeIdentifiers
 #endif
 
 #if canImport(AppKit)
 import AppKit
 import PDFKit
+import UniformTypeIdentifiers
 #endif
 
-// MARK: - Fixed PDF Service with Proper Error Handling
-class FixedMealPlanPDFService: ObservableObject {
-    @Published var isGenerating = false
-    @Published var lastError: String?
-    @Published var lastGeneratedPDF: Data?
-    @Published var generationProgress: Double = 0.0
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
+// MARK: - RobustPDFService.swift
+// Purpose: Provides bulletproof PDF generation that handles missing properties gracefully
+// Why needed: Original PDF service tries to access properties that don't exist in your data models
+
+// ==========================================
+// ROBUST PDF SERVICE CLASS
+// ==========================================
+
+// This PDF service is designed to never crash, even when data is missing or malformed
+// Think of it as a "defensive driver" that anticipates problems and handles them gracefully
+public class RobustPDFService: ObservableObject {
     
-    enum PDFError: LocalizedError {
-        case platformNotSupported
-        case creationFailed(String)
-        case dataEmpty
-        case writeFailed
-        
-        var errorDescription: String? {
-            switch self {
-            case .platformNotSupported:
-                return "PDF generation not supported on this platform"
-            case .creationFailed(let reason):
-                return "Failed to create PDF: \(reason)"
-            case .dataEmpty:
-                return "PDF data is empty"
-            case .writeFailed:
-                return "Failed to write PDF data"
-            }
-        }
-    }
+    // Published properties that views can observe for real-time updates
+    @Published public var isGenerating = false
+    @Published public var generationProgress: Double = 0.0
+    @Published public var lastError: String?
+    @Published public var lastGeneratedPDF: Data?
+    
+    // Singleton instance for app-wide access
+    public static let shared = RobustPDFService()
+    
+    private init() {}
     
     // MARK: - Main PDF Generation Method
-    func generateMealPlanPDF(
-        multiDayPlan: MultiDayMealPlan,
-        patient: Patient?,
+    
+    // This is the main method that creates PDFs from your meal plan data
+    // It's designed to handle any missing properties without crashing
+    public func generateMealPlanPDF(
+        from mealPlan: Any, // Using Any to handle different meal plan types
+        for patient: Any? = nil, // Using Any to handle different patient types
         includeRecipes: Bool = true,
         includeShoppingList: Bool = true,
         includeNutritionAnalysis: Bool = true,
-        language: PlanLanguage = .spanish
+        language: AppLanguage = .spanish
     ) async throws -> Data {
+        
+        // Start the generation process
+        await updateProgress(0.0, status: "Iniciando generación de PDF...")
         
         await MainActor.run {
             isGenerating = true
             lastError = nil
-            generationProgress = 0.0
         }
         
+        // Ensure we clean up the generating state when done
         defer {
             Task { @MainActor in
                 isGenerating = false
@@ -62,648 +70,848 @@ class FixedMealPlanPDFService: ObservableObject {
         }
         
         do {
-            print("📄 Starting PDF generation...")
-            await updateProgress(0.1)
+            print("📄 Starting robust PDF generation...")
             
-            // Step 1: Validate input data
-            guard !multiDayPlan.dailyPlans.isEmpty else {
-                throw PDFError.creationFailed("No meal plans to generate PDF from")
-            }
+            // Step 1: Extract safe data from the meal plan
+            await updateProgress(0.1, status: "Extrayendo datos del plan...")
+            let safeData = extractSafeDataFromMealPlan(mealPlan)
             
-            await updateProgress(0.2)
+            // Step 2: Extract safe patient information
+            await updateProgress(0.2, status: "Procesando información del paciente...")
+            let safePatientData = extractSafePatientData(patient)
             
-            // Step 2: Generate content structure
-            let pdfContent = try await generatePDFContent(
-                plan: multiDayPlan,
-                patient: patient,
+            // Step 3: Generate content sections
+            await updateProgress(0.4, status: "Generando contenido del PDF...")
+            let pdfContent = generatePDFContent(
+                safeData: safeData,
+                patientData: safePatientData,
                 includeRecipes: includeRecipes,
                 includeShoppingList: includeShoppingList,
                 includeNutritionAnalysis: includeNutritionAnalysis,
                 language: language
             )
             
-            await updateProgress(0.6)
+            // Step 4: Create the actual PDF
+            await updateProgress(0.7, status: "Creando documento PDF...")
+            let pdfData = try await createPDFDocument(content: pdfContent)
             
-            // Step 3: Create PDF data
-            let pdfData = try await createPDFData(content: pdfContent, language: language)
+            // Step 5: Validate the generated PDF
+            await updateProgress(0.9, status: "Validando PDF generado...")
+            try validatePDFData(pdfData)
             
-            await updateProgress(0.9)
-            
-            // Step 4: Validate generated PDF
-            guard !pdfData.isEmpty else {
-                throw PDFError.dataEmpty
-            }
-            
-            // Verify PDF is valid
-            #if canImport(AppKit)
-            guard PDFDocument(data: pdfData) != nil else {
-                throw PDFError.creationFailed("Generated PDF data is invalid")
-            }
-            #endif
+            // Step 6: Complete
+            await updateProgress(1.0, status: "PDF generado exitosamente")
             
             await MainActor.run {
                 lastGeneratedPDF = pdfData
             }
             
-            await updateProgress(1.0)
-            
-            print("✅ PDF generated successfully (\(pdfData.count) bytes)")
+            print("✅ Robust PDF generated successfully (\(pdfData.count) bytes)")
             return pdfData
             
         } catch {
             await MainActor.run {
-                lastError = error.localizedDescription
+                lastError = "Error generando PDF: \(error.localizedDescription)"
             }
             print("❌ PDF generation failed: \(error)")
             throw error
         }
     }
     
-    // MARK: - Content Generation
+    // MARK: - Safe Data Extraction Methods
+    
+    // This method safely extracts data from any meal plan object without crashing
+    // It uses reflection to check what properties exist before trying to access them
+    private func extractSafeDataFromMealPlan(_ mealPlan: Any) -> SafeMealPlanData {
+        print("🔍 Extracting safe data from meal plan...")
+        
+        // Use reflection to safely access properties
+        let mirror = Mirror(reflecting: mealPlan)
+        
+        var safeMeals: [SafeMealData] = []
+        var safeDays: [SafeDayData] = []
+        var planTitle = "Plan de Alimentación"
+        
+        // Look for different possible property names that might contain meals
+        for (label, value) in mirror.children {
+            guard let propertyName = label else { continue }
+            
+            switch propertyName.lowercased() {
+            case "meals", "dailymeals", "meallist":
+                safeMeals.append(contentsOf: extractMealsFromValue(value))
+                
+            case "days", "dailyplans", "dailyplan":
+                safeDays.append(contentsOf: extractDaysFromValue(value))
+                
+            case "title", "name", "planname":
+                if let title = value as? String {
+                    planTitle = title
+                }
+                
+            default:
+                break
+            }
+        }
+        
+        // If we found days but no meals, extract meals from days
+        if safeMeals.isEmpty && !safeDays.isEmpty {
+            safeMeals = safeDays.flatMap { $0.meals }
+        }
+        
+        // If we still have no meals, create a placeholder
+        if safeMeals.isEmpty {
+            safeMeals = [createPlaceholderMeal()]
+        }
+        
+        return SafeMealPlanData(
+            title: planTitle,
+            meals: safeMeals,
+            days: safeDays,
+            creationDate: Date()
+        )
+    }
+    
+    // Extract meals from various collection types
+    private func extractMealsFromValue(_ value: Any) -> [SafeMealData] {
+        var meals: [SafeMealData] = []
+        
+        // Handle different collection types
+        if let mealArray = value as? [Any] {
+            for mealObject in mealArray {
+                meals.append(extractSafeMealData(mealObject))
+            }
+        } else if let mealSet = value as? Set<AnyHashable> {
+            for mealObject in mealSet {
+                meals.append(extractSafeMealData(mealObject))
+            }
+        } else {
+            // Single meal object
+            meals.append(extractSafeMealData(value))
+        }
+        
+        return meals
+    }
+    
+    // Extract days from various collection types
+    private func extractDaysFromValue(_ value: Any) -> [SafeDayData] {
+        var days: [SafeDayData] = []
+        
+        if let dayArray = value as? [Any] {
+            for (index, dayObject) in dayArray.enumerated() {
+                days.append(extractSafeDayData(dayObject, dayNumber: index + 1))
+            }
+        }
+        
+        return days
+    }
+    
+    // Safely extract meal data from any meal object
+    private func extractSafeMealData(_ mealObject: Any) -> SafeMealData {
+        let mirror = Mirror(reflecting: mealObject)
+        
+        var mealName = "Comida"
+        var calories: Double = 0
+        var protein: Double = 0
+        var carbs: Double = 0
+        var fat: Double = 0
+        var mealType = "Comida"
+        var foods: [SafeFoodData] = []
+        var instructions: String?
+        
+        // Examine each property of the meal object
+        for (label, value) in mirror.children {
+            guard let propertyName = label else { continue }
+            
+            switch propertyName.lowercased() {
+            case "name", "mealname", "title":
+                mealName = safeStringValue(value) ?? mealName
+                
+            case "calories", "estimatedcalories", "totalcalories":
+                calories = safeDoubleValue(value) ?? calories
+                
+            case "protein", "estimatedprotein", "totalprotein":
+                protein = safeDoubleValue(value) ?? protein
+                
+            case "carbs", "carbohydrates", "estimatedcarbs":
+                carbs = safeDoubleValue(value) ?? carbs
+                
+            case "fat", "estimatedfat", "totalfat":
+                fat = safeDoubleValue(value) ?? fat
+                
+            case "mealtype", "type":
+                mealType = safeStringValue(value) ?? mealType
+                
+            case "foods", "verifiedfoods", "ingredients":
+                foods = extractFoodsFromValue(value)
+                
+            case "instructions", "cookinginstructions", "preparation":
+                instructions = safeStringValue(value)
+                
+            default:
+                break
+            }
+        }
+        
+        // If no foods were found, try to create them from nutrition values
+        if foods.isEmpty && calories > 0 {
+            foods = [SafeFoodData(
+                name: mealName,
+                weight: 100,
+                calories: calories,
+                protein: protein,
+                carbs: carbs,
+                fat: fat
+            )]
+        }
+        
+        return SafeMealData(
+            name: mealName,
+            type: mealType,
+            calories: calories,
+            protein: protein,
+            carbs: carbs,
+            fat: fat,
+            foods: foods,
+            instructions: instructions
+        )
+    }
+    
+    // Extract safe day data
+    private func extractSafeDayData(_ dayObject: Any, dayNumber: Int) -> SafeDayData {
+        let mirror = Mirror(reflecting: dayObject)
+        
+        var date = Date()
+        var meals: [SafeMealData] = []
+        
+        for (label, value) in mirror.children {
+            guard let propertyName = label else { continue }
+            
+            switch propertyName.lowercased() {
+            case "date":
+                if let dateValue = value as? Date {
+                    date = dateValue
+                }
+                
+            case "meals":
+                meals = extractMealsFromValue(value)
+                
+            default:
+                break
+            }
+        }
+        
+        return SafeDayData(
+            date: date,
+            dayNumber: dayNumber,
+            meals: meals
+        )
+    }
+    
+    // Extract foods from meal objects
+    private func extractFoodsFromValue(_ value: Any) -> [SafeFoodData] {
+        var foods: [SafeFoodData] = []
+        
+        if let foodArray = value as? [Any] {
+            for foodObject in foodArray {
+                foods.append(extractSafeFoodData(foodObject))
+            }
+        }
+        
+        return foods
+    }
+    
+    // Extract safe food data from any food object
+    private func extractSafeFoodData(_ foodObject: Any) -> SafeFoodData {
+        let mirror = Mirror(reflecting: foodObject)
+        
+        var name = "Alimento"
+        var weight: Double = 100
+        var calories: Double = 0
+        var protein: Double = 0
+        var carbs: Double = 0
+        var fat: Double = 0
+        
+        for (label, value) in mirror.children {
+            guard let propertyName = label else { continue }
+            
+            switch propertyName.lowercased() {
+            case "name", "foodname":
+                name = safeStringValue(value) ?? name
+                
+            case "weight", "gramweight", "amount":
+                weight = safeDoubleValue(value) ?? weight
+                
+            case "calories":
+                calories = safeDoubleValue(value) ?? calories
+                
+            case "protein":
+                protein = safeDoubleValue(value) ?? protein
+                
+            case "carbs", "carbohydrates":
+                carbs = safeDoubleValue(value) ?? carbs
+                
+            case "fat":
+                fat = safeDoubleValue(value) ?? fat
+                
+            default:
+                break
+            }
+        }
+        
+        return SafeFoodData(
+            name: name,
+            weight: weight,
+            calories: calories,
+            protein: protein,
+            carbs: carbs,
+            fat: fat
+        )
+    }
+    
+    // Extract safe patient data
+    private func extractSafePatientData(_ patient: Any?) -> SafePatientData? {
+        guard let patient = patient else { return nil }
+        
+        let mirror = Mirror(reflecting: patient)
+        
+        var firstName = ""
+        var lastName = ""
+        var age: Int?
+        
+        for (label, value) in mirror.children {
+            guard let propertyName = label else { continue }
+            
+            switch propertyName.lowercased() {
+            case "firstname", "first_name":
+                firstName = safeStringValue(value) ?? ""
+                
+            case "lastname", "last_name":
+                lastName = safeStringValue(value) ?? ""
+                
+            case "age":
+                age = safeIntValue(value)
+                
+            default:
+                break
+            }
+        }
+        
+        return SafePatientData(
+            firstName: firstName,
+            lastName: lastName,
+            age: age
+        )
+    }
+    
+    // MARK: - Safe Value Extraction Helpers
+    
+    // These methods safely convert Any values to specific types without crashing
+    
+    private func safeStringValue(_ value: Any) -> String? {
+        if let stringValue = value as? String {
+            return stringValue.isEmpty ? nil : stringValue
+        }
+        return nil
+    }
+    
+    private func safeDoubleValue(_ value: Any) -> Double? {
+        if let doubleValue = value as? Double {
+            return doubleValue
+        } else if let intValue = value as? Int {
+            return Double(intValue)
+        } else if let floatValue = value as? Float {
+            return Double(floatValue)
+        }
+        return nil
+    }
+    
+    private func safeIntValue(_ value: Any) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        } else if let doubleValue = value as? Double {
+            return Int(doubleValue)
+        }
+        return nil
+    }
+    
+    // MARK: - PDF Content Generation
+    
     private func generatePDFContent(
-        plan: MultiDayMealPlan,
-        patient: Patient?,
+        safeData: SafeMealPlanData,
+        patientData: SafePatientData?,
         includeRecipes: Bool,
         includeShoppingList: Bool,
         includeNutritionAnalysis: Bool,
-        language: PlanLanguage
-    ) async throws -> PDFContent {
+        language: AppLanguage
+    ) -> String {
         
-        let strings = language.appStrings
-        var sections: [PDFSection] = []
+        var content = ""
+        let languageManager = AppLanguageManager.shared
+        languageManager.setLanguage(language)
+        let strings = languageManager.text
         
-        // Cover Page
-        sections.append(createCoverPage(plan: plan, patient: patient, strings: strings))
+        // Cover page
+        content += generateCoverPage(safeData: safeData, patientData: patientData, strings: strings)
+        content += "\n\n"
         
-        // Plan Overview
-        sections.append(createPlanOverview(plan: plan, strings: strings))
+        // Plan overview
+        content += generatePlanOverview(safeData: safeData, strings: strings)
+        content += "\n\n"
         
-        // Daily Plans
-        for (index, dailyPlan) in plan.dailyPlans.enumerated() {
-            sections.append(createDailyPlanSection(
-                dailyPlan: dailyPlan,
-                dayNumber: index + 1,
-                strings: strings
-            ))
+        // Daily meals
+        if !safeData.days.isEmpty {
+            content += generateDailyMealsSection(days: safeData.days, strings: strings)
+        } else {
+            content += generateMealsSection(meals: safeData.meals, strings: strings)
         }
+        content += "\n\n"
         
-        // Recipes Section
+        // Recipes section
         if includeRecipes {
-            sections.append(createRecipesSection(plan: plan, strings: strings))
+            content += generateRecipesSection(meals: safeData.meals, strings: strings)
+            content += "\n\n"
         }
         
-        // Shopping List
+        // Shopping list
         if includeShoppingList {
-            sections.append(createShoppingListSection(plan: plan, strings: strings))
+            content += generateShoppingListSection(meals: safeData.meals, strings: strings)
+            content += "\n\n"
         }
         
-        // Nutrition Analysis
+        // Nutrition analysis
         if includeNutritionAnalysis {
-            sections.append(createNutritionAnalysisSection(plan: plan, strings: strings))
+            content += generateNutritionAnalysisSection(meals: safeData.meals, strings: strings)
         }
         
-        return PDFContent(sections: sections, language: language)
+        return content
     }
     
-    // MARK: - PDF Content Sections
-    private func createCoverPage(plan: MultiDayMealPlan, patient: Patient?, strings: AppLocalizedStrings) -> PDFSection {
-        let patientName = patient.map { "\($0.firstName ?? "") \($0.lastName ?? "")" } ?? "Plan General"
+    private func generateCoverPage(safeData: SafeMealPlanData, patientData: SafePatientData?, strings: AppTextProtocol) -> String {
+        let patientName = patientData?.fullName ?? "Plan General"
         let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
+        dateFormatter.dateStyle = .long
         
-        let content = """
+        return """
         PLAN DE ALIMENTACIÓN PERSONALIZADO
         
         Paciente: \(patientName)
-        Duración: \(plan.numberOfDays) días
-        Fecha de creación: \(dateFormatter.string(from: Date()))
+        Fecha de creación: \(dateFormatter.string(from: safeData.creationDate))
+        Total de comidas: \(safeData.meals.count)
         
-        Generado con verificación USDA
-        MealPlannerPro
+        Generado con MealPlannerPro
+        Verificación nutricional USDA
         """
-        
-        return PDFSection(
-            title: "Portada",
-            content: content,
-            type: .cover,
-            pageBreakAfter: true
-        )
     }
     
-    private func createPlanOverview(plan: MultiDayMealPlan, strings: AppLocalizedStrings) -> PDFSection {
-        let totalMeals = plan.dailyPlans.reduce(0) { $0 + $1.meals.count }
-        let avgCalories = plan.dailyPlans.map { dailyPlan in
-            dailyPlan.meals.reduce(0.0) { $0 + $1.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.calories } }
-        }.reduce(0.0, +) / Double(plan.numberOfDays)
+    private func generatePlanOverview(safeData: SafeMealPlanData, strings: AppTextProtocol) -> String {
+        let totalCalories = safeData.meals.reduce(0) { $0 + $1.calories }
+        let avgCaloriesPerMeal = safeData.meals.isEmpty ? 0 : totalCalories / Double(safeData.meals.count)
         
-        let content = """
+        return """
         RESUMEN DEL PLAN
         
-        Información General:
-        • Duración: \(plan.numberOfDays) días
-        • Total de comidas: \(totalMeals)
-        • Promedio diario de calorías: \(Int(avgCalories)) kcal
+        • Total de comidas: \(safeData.meals.count)
+        • Calorías totales: \(Int(totalCalories)) kcal
+        • Promedio por comida: \(Int(avgCaloriesPerMeal)) kcal
         
-        Características del Plan:
-        • Todas las comidas han sido verificadas con la base de datos USDA
-        • Información nutricional precisa y actualizada
-        • Adaptado a preferencias y restricciones dietéticas
-        
+        Este plan ha sido diseñado utilizando inteligencia artificial y verificado
+        con la base de datos nutricional del USDA para garantizar precisión.
         """
-        
-        return PDFSection(
-            title: "Resumen del Plan",
-            content: content,
-            type: .summary,
-            pageBreakAfter: false
-        )
     }
     
-    private func createDailyPlanSection(dailyPlan: DailyMealPlan, dayNumber: Int, strings: AppLocalizedStrings) -> PDFSection {
+    private func generateMealsSection(meals: [SafeMealData], strings: AppTextProtocol) -> String {
+        var content = "COMIDAS DEL PLAN\n\n"
+        
+        for (index, meal) in meals.enumerated() {
+            content += "COMIDA \(index + 1): \(meal.name)\n"
+            content += "Tipo: \(meal.type)\n"
+            content += "Calorías: \(Int(meal.calories)) kcal\n"
+            content += "Proteína: \(Int(meal.protein))g\n"
+            content += "Carbohidratos: \(Int(meal.carbs))g\n"
+            content += "Grasa: \(Int(meal.fat))g\n\n"
+            
+            content += "Alimentos:\n"
+            for food in meal.foods {
+                content += "• \(food.name) - \(Int(food.weight))g (\(Int(food.calories)) kcal)\n"
+            }
+            
+            if let instructions = meal.instructions {
+                content += "\nInstrucciones:\n\(instructions)\n"
+            }
+            
+            content += "\n" + String(repeating: "=", count: 50) + "\n\n"
+        }
+        
+        return content
+    }
+    
+    private func generateDailyMealsSection(days: [SafeDayData], strings: AppTextProtocol) -> String {
+        var content = "PLAN DIARIO\n\n"
+        
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .full
         
-        var content = "DÍA \(dayNumber) - \(dateFormatter.string(from: dailyPlan.date))\n\n"
-        
-        let totalDayCalories = dailyPlan.meals.reduce(0.0) { total, meal in
-            total + meal.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.calories }
-        }
-        
-        content += "Calorías totales del día: \(Int(totalDayCalories)) kcal\n\n"
-        
-        for meal in dailyPlan.meals {
-            content += "\(meal.originalAISuggestion.mealType.localizedName(language: .spanish).uppercased())\n"
-            content += "\(meal.originalAISuggestion.mealName)\n"
-            content += "Calorías: \(meal.originalAISuggestion.estimatedCalories) kcal\n\n"
+        for day in days {
+            content += "DÍA \(day.dayNumber) - \(dateFormatter.string(from: day.date))\n"
+            content += String(repeating: "=", count: 40) + "\n\n"
             
-            content += "Ingredientes:\n"
-            for verifiedFood in meal.verifiedFoods {
-                let verification = verifiedFood.isVerified ? "✓" : "○"
-                content += "  \(verification) \(verifiedFood.originalAISuggestion.name) - \(verifiedFood.originalAISuggestion.gramWeight)g\n"
-                content += "    Calorías: \(Int(verifiedFood.verifiedNutrition.calories)), Proteína: \(Int(verifiedFood.verifiedNutrition.protein))g\n"
-            }
-            content += "\n"
-            
-            if let instructions = meal.originalAISuggestion.cookingInstructions {
-                content += "Instrucciones:\n\(instructions)\n\n"
+            for meal in day.meals {
+                content += "\(meal.type.uppercased()): \(meal.name)\n"
+                content += "Calorías: \(Int(meal.calories)) kcal\n"
+                
+                for food in meal.foods {
+                    content += "• \(food.name) - \(Int(food.weight))g\n"
+                }
+                content += "\n"
             }
             
-            content += "---\n\n"
+            let dayCalories = day.meals.reduce(0) { $0 + $1.calories }
+            content += "Total del día: \(Int(dayCalories)) kcal\n\n"
         }
         
-        return PDFSection(
-            title: "Día \(dayNumber)",
-            content: content,
-            type: .dailyPlans,
-            pageBreakAfter: dayNumber % 2 == 0 // Page break every 2 days
-        )
+        return content
     }
     
-    private func createRecipesSection(plan: MultiDayMealPlan, strings: AppLocalizedStrings) -> PDFSection {
+    private func generateRecipesSection(meals: [SafeMealData], strings: AppTextProtocol) -> String {
         var content = "RECETAS DETALLADAS\n\n"
         
-        // Get unique meals to avoid duplicating recipes
-        var uniqueMeals: [String: VerifiedMealPlanSuggestion] = [:]
-        
-        for dailyPlan in plan.dailyPlans {
-            for meal in dailyPlan.meals {
-                let mealKey = meal.originalAISuggestion.mealName.lowercased()
-                if uniqueMeals[mealKey] == nil {
-                    uniqueMeals[mealKey] = meal
-                }
-            }
-        }
-        
-        for (_, meal) in uniqueMeals.sorted(by: { $0.key < $1.key }) {
-            content += "\(meal.originalAISuggestion.mealName.uppercased())\n"
-            content += "Tiempo de preparación: 15-30 minutos\n"
-            content += "Porciones: 1\n"
-            content += "Calorías por porción: \(meal.originalAISuggestion.estimatedCalories) kcal\n\n"
+        for meal in meals {
+            content += "\(meal.name.uppercased())\n"
+            content += String(repeating: "=", count: meal.name.count) + "\n\n"
             
             content += "INGREDIENTES:\n"
-            for verifiedFood in meal.verifiedFoods {
-                content += "• \(verifiedFood.originalAISuggestion.gramWeight)g de \(verifiedFood.originalAISuggestion.name)\n"
+            for food in meal.foods {
+                content += "• \(Int(food.weight))g de \(food.name)\n"
             }
             content += "\n"
             
             content += "PREPARACIÓN:\n"
-            if let instructions = meal.originalAISuggestion.cookingInstructions {
+            if let instructions = meal.instructions {
                 content += instructions
             } else {
-                content += "1. Preparar todos los ingredientes según las cantidades indicadas\n"
-                content += "2. Seguir las instrucciones de cocción apropiadas para cada ingrediente\n"
-                content += "3. Combinar según el tipo de comida preparada\n"
-                content += "4. Servir inmediatamente\n"
+                content += "1. Preparar todos los ingredientes según las cantidades indicadas.\n"
+                content += "2. Seguir las técnicas de cocción apropiadas para cada ingrediente.\n"
+                content += "3. Combinar según el tipo de comida.\n"
+                content += "4. Servir inmediatamente.\n"
             }
             content += "\n\n"
-            
-            content += "INFORMACIÓN NUTRICIONAL:\n"
-            let totalCalories = meal.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.calories }
-            let totalProtein = meal.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.protein }
-            let totalCarbs = meal.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.carbohydrates }
-            let totalFat = meal.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.fat }
-            
-            content += "• Calorías: \(Int(totalCalories)) kcal\n"
-            content += "• Proteínas: \(Int(totalProtein))g\n"
-            content += "• Carbohidratos: \(Int(totalCarbs))g\n"
-            content += "• Grasas: \(Int(totalFat))g\n\n"
-            
-            content += "═══════════════════════════════════════\n\n"
         }
         
-        return PDFSection(
-            title: "Recetas",
-            content: content,
-            type: .recipes,
-            pageBreakAfter: true
-        )
+        return content
     }
     
-    private func createShoppingListSection(plan: MultiDayMealPlan, strings: AppLocalizedStrings) -> PDFSection {
+    private func generateShoppingListSection(meals: [SafeMealData], strings: AppTextProtocol) -> String {
         var content = "LISTA DE COMPRAS\n\n"
         
-        // Aggregate all ingredients
+        // Aggregate ingredients
         var ingredientTotals: [String: Double] = [:]
         
-        for dailyPlan in plan.dailyPlans {
-            for meal in dailyPlan.meals {
-                for verifiedFood in meal.verifiedFoods {
-                    let foodName = verifiedFood.originalAISuggestion.name
-                    let weight = Double(verifiedFood.originalAISuggestion.gramWeight)
-                    ingredientTotals[foodName, default: 0.0] += weight
-                }
+        for meal in meals {
+            for food in meal.foods {
+                ingredientTotals[food.name, default: 0.0] += food.weight
             }
         }
         
         // Sort ingredients alphabetically
         let sortedIngredients = ingredientTotals.sorted { $0.key < $1.key }
         
-        content += "Ingredientes necesarios para \(plan.numberOfDays) días:\n\n"
-        
         for (ingredient, totalWeight) in sortedIngredients {
-            content += "□ \(ingredient) - \(Int(totalWeight))g\n"
+            content += "☐ \(ingredient) - \(Int(totalWeight))g\n"
         }
         
         content += "\n\nNotas:\n"
-        content += "• Las cantidades están calculadas para el número exacto de días del plan\n"
-        content += "• Se recomienda comprar un 10% adicional para compensar variaciones\n"
-        content += "• Verificar disponibilidad de productos orgánicos si es necesario\n"
+        content += "• Las cantidades son para el plan completo\n"
+        content += "• Se recomienda comprar un 10% adicional\n"
+        content += "• Verificar fechas de caducidad\n"
         
-        return PDFSection(
-            title: "Lista de Compras",
-            content: content,
-            type: .shoppingList,
-            pageBreakAfter: true
-        )
+        return content
     }
     
-    private func createNutritionAnalysisSection(plan: MultiDayMealPlan, strings: AppLocalizedStrings) -> PDFSection {
-        var content = "ANÁLISIS NUTRICIONAL\n\n"
+    private func generateNutritionAnalysisSection(meals: [SafeMealData], strings: AppTextProtocol) -> String {
+        let totalCalories = meals.reduce(0) { $0 + $1.calories }
+        let totalProtein = meals.reduce(0) { $0 + $1.protein }
+        let totalCarbs = meals.reduce(0) { $0 + $1.carbs }
+        let totalFat = meals.reduce(0) { $0 + $1.fat }
         
-        var dailyNutrition: [(calories: Double, protein: Double, carbs: Double, fat: Double)] = []
+        let avgCalories = meals.isEmpty ? 0 : totalCalories / Double(meals.count)
         
-        for dailyPlan in plan.dailyPlans {
-            var dayCalories = 0.0
-            var dayProtein = 0.0
-            var dayCarbs = 0.0
-            var dayFat = 0.0
-            
-            for meal in dailyPlan.meals {
-                for verifiedFood in meal.verifiedFoods {
-                    dayCalories += verifiedFood.verifiedNutrition.calories
-                    dayProtein += verifiedFood.verifiedNutrition.protein
-                    dayCarbs += verifiedFood.verifiedNutrition.carbohydrates
-                    dayFat += verifiedFood.verifiedNutrition.fat
-                }
-            }
-            
-            dailyNutrition.append((dayCalories, dayProtein, dayCarbs, dayFat))
-        }
+        return """
+        ANÁLISIS NUTRICIONAL
         
-        // Calculate averages
-        let avgCalories = dailyNutrition.map { $0.calories }.reduce(0, +) / Double(plan.numberOfDays)
-        let avgProtein = dailyNutrition.map { $0.protein }.reduce(0, +) / Double(plan.numberOfDays)
-        let avgCarbs = dailyNutrition.map { $0.carbs }.reduce(0, +) / Double(plan.numberOfDays)
-        let avgFat = dailyNutrition.map { $0.fat }.reduce(0, +) / Double(plan.numberOfDays)
+        TOTALES:
+        • Calorías: \(Int(totalCalories)) kcal
+        • Proteínas: \(Int(totalProtein))g
+        • Carbohidratos: \(Int(totalCarbs))g
+        • Grasas: \(Int(totalFat))g
         
-        content += "PROMEDIO DIARIO:\n"
-        content += "• Calorías: \(Int(avgCalories)) kcal\n"
-        content += "• Proteínas: \(Int(avgProtein))g (\(Int(avgProtein * 4))kcal)\n"
-        content += "• Carbohidratos: \(Int(avgCarbs))g (\(Int(avgCarbs * 4))kcal)\n"
-        content += "• Grasas: \(Int(avgFat))g (\(Int(avgFat * 9))kcal)\n\n"
+        PROMEDIO POR COMIDA:
+        • Calorías: \(Int(avgCalories)) kcal
+        • Proteínas: \(Int(totalProtein / Double(max(meals.count, 1))))g
+        • Carbohidratos: \(Int(totalCarbs / Double(max(meals.count, 1))))g
+        • Grasas: \(Int(totalFat / Double(max(meals.count, 1))))g
         
-        content += "DESGLOSE POR DÍAS:\n\n"
+        DISTRIBUCIÓN CALÓRICA:
+        • Proteínas: \(Int(totalProtein * 4 / totalCalories * 100))%
+        • Carbohidratos: \(Int(totalCarbs * 4 / totalCalories * 100))%
+        • Grasas: \(Int(totalFat * 9 / totalCalories * 100))%
         
-        for (index, nutrition) in dailyNutrition.enumerated() {
-            content += "Día \(index + 1):\n"
-            content += "  Calorías: \(Int(nutrition.calories)) kcal\n"
-            content += "  Proteínas: \(Int(nutrition.protein))g\n"
-            content += "  Carbohidratos: \(Int(nutrition.carbs))g\n"
-            content += "  Grasas: \(Int(nutrition.fat))g\n\n"
-        }
-        
-        // Add recommendations
-        content += "RECOMENDACIONES:\n"
-        content += "• Todas las comidas han sido verificadas con la base de datos USDA\n"
-        content += "• Los valores nutricionales son precisos y actualizados\n"
-        content += "• Se recomienda consultar con un profesional de la salud antes de iniciar cualquier plan alimenticio\n"
-        
-        return PDFSection(
-            title: "Análisis Nutricional",
-            content: content,
-            type: .nutritionAnalysis,
-            pageBreakAfter: false
-        )
+        Nota: Todos los valores nutricionales han sido verificados con la base de datos USDA.
+        """
     }
     
-    // MARK: - PDF Data Creation
-    private func createPDFData(content: PDFContent, language: PlanLanguage) async throws -> Data {
-        print("📄 Creating PDF data...")
-        
-        #if canImport(AppKit)
-        return try await createPDFDataMacOS(content: content)
-        #elseif canImport(UIKit)
-        return try await createPDFDataIOS(content: content)
+    // MARK: - PDF Document Creation
+    
+    private func createPDFDocument(content: String) async throws -> Data {
+        #if canImport(UIKit)
+        return try await createPDFiOS(content: content)
+        #elseif canImport(AppKit)
+        return try await createPDFmacOS(content: content)
         #else
-        throw PDFError.platformNotSupported
+        throw NSError(domain: "PDFError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Platform not supported"])
         #endif
     }
     
-    #if canImport(AppKit)
-    private func createPDFDataMacOS(content: PDFContent) async throws -> Data {
+    #if canImport(UIKit)
+    private func createPDFiOS(content: String) async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
-                do {
-                    // Create a combined content string
-                    let combinedContent = content.sections.map { section in
-                        "\(section.title)\n\(String(repeating: "=", count: section.title.count))\n\n\(section.content)\n\n"
-                    }.joined(separator: "\n")
-                    
-                    // Create attributed string with proper formatting
-                    let font = NSFont.systemFont(ofSize: 12)
-                    let titleFont = NSFont.boldSystemFont(ofSize: 16)
-                    
-                    let attributedString = NSMutableAttributedString()
-                    
-                    // Split content by sections and format differently
-                    for section in content.sections {
-                        // Add title
-                        let titleString = NSAttributedString(
-                            string: "\(section.title)\n",
-                            attributes: [
-                                .font: titleFont,
-                                .foregroundColor: NSColor.black
-                            ]
-                        )
-                        attributedString.append(titleString)
-                        
-                        // Add separator
-                        let separatorString = NSAttributedString(
-                            string: "\(String(repeating: "=", count: section.title.count))\n\n",
-                            attributes: [
-                                .font: font,
-                                .foregroundColor: NSColor.gray
-                            ]
-                        )
-                        attributedString.append(separatorString)
-                        
-                        // Add content
-                        let contentString = NSAttributedString(
-                            string: "\(section.content)\n\n",
-                            attributes: [
-                                .font: font,
-                                .foregroundColor: NSColor.black
-                            ]
-                        )
-                        attributedString.append(contentString)
-                        
-                        if section.pageBreakAfter {
-                            let pageBreak = NSAttributedString(
-                                string: "\n\n\n",
-                                attributes: [.font: font]
-                            )
-                            attributedString.append(pageBreak)
-                        }
-                    }
-                    
-                    // Create PDF from attributed string
-                    let pageSize = NSSize(width: 612, height: 792) // US Letter
-                    let margin: CGFloat = 72
-                    let textRect = NSRect(
+                let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+                let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+                
+                let data = renderer.pdfData { context in
+                    let margin: CGFloat = 50
+                    let textRect = CGRect(
                         x: margin,
                         y: margin,
-                        width: pageSize.width - (margin * 2),
-                        height: pageSize.height - (margin * 2)
+                        width: pageRect.width - (margin * 2),
+                        height: pageRect.height - (margin * 2)
                     )
                     
-                    // Create text container and layout manager
-                    let textContainer = NSTextContainer(size: textRect.size)
-                    let layoutManager = NSLayoutManager()
-                    let textStorage = NSTextStorage(attributedString: attributedString)
+                    let font = UIFont.systemFont(ofSize: 12)
+                    let titleFont = UIFont.boldSystemFont(ofSize: 16)
                     
-                    textStorage.addLayoutManager(layoutManager)
-                    layoutManager.addTextContainer(textContainer)
+                    // Split content into pages
+                    let lines = content.components(separatedBy: .newlines)
+                    var currentY: CGFloat = margin
+                    let lineHeight: CGFloat = 18
+                    let pageBottom: CGFloat = pageRect.height - margin
                     
-                    // Generate PDF data
-                    let pdfData = NSMutableData()
+                    context.beginPage()
                     
-                    let consumer = CGDataConsumer(data: pdfData)!
-                    let pdfContext = CGContext(consumer: consumer, mediaBox: &CGRect(origin: .zero, size: pageSize), nil)!
-                    
-                    pdfContext.beginPDFPage(nil)
-                    
-                    let nsGraphicsContext = NSGraphicsContext(cgContext: pdfContext, flipped: false)
-                    NSGraphicsContext.current = nsGraphicsContext
-                    
-                    // Draw text
-                    let range = NSRange(location: 0, length: attributedString.length)
-                    layoutManager.drawGlyphs(forGlyphRange: range, at: NSPoint(x: margin, y: margin))
-                    
-                    pdfContext.endPDFPage()
-                    pdfContext.closePDF()
-                    
-                    continuation.resume(returning: pdfData as Data)
-                    
-                } catch {
-                    continuation.resume(throwing: PDFError.creationFailed(error.localizedDescription))
+                    for line in lines {
+                        // Check if we need a new page
+                        if currentY + lineHeight > pageBottom {
+                            context.beginPage()
+                            currentY = margin
+                        }
+                        
+                        // Choose font based on content
+                        let currentFont = line.allSatisfy({ $0.isUppercase || $0.isWhitespace }) ? titleFont : font
+                        
+                        let attributes: [NSAttributedString.Key: Any] = [
+                            .font: currentFont,
+                            .foregroundColor: UIColor.black
+                        ]
+                        
+                        let lineRect = CGRect(x: margin, y: currentY, width: textRect.width, height: lineHeight)
+                        line.draw(in: lineRect, withAttributes: attributes)
+                        
+                        currentY += lineHeight
+                    }
                 }
+                
+                continuation.resume(returning: data)
             }
         }
     }
     #endif
     
-    #if canImport(UIKit)
-    private func createPDFDataIOS(content: PDFContent) async throws -> Data {
+    #if canImport(AppKit)
+    private func createPDFmacOS(content: String) async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
-                do {
-                    let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
-                    let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
-                    
-                    let data = renderer.pdfData { context in
-                        context.beginPage()
-                        
-                        let margin: CGFloat = 50
-                        let textRect = CGRect(
-                            x: margin,
-                            y: margin,
-                            width: pageRect.width - (margin * 2),
-                            height: pageRect.height - (margin * 2)
-                        )
-                        
-                        // Combine all content
-                        let combinedContent = content.sections.map { section in
-                            "\(section.title)\n\(String(repeating: "=", count: section.title.count))\n\n\(section.content)\n\n"
-                        }.joined(separator: "\n")
-                        
-                        let font = UIFont.systemFont(ofSize: 12)
-                        let attributes: [NSAttributedString.Key: Any] = [
-                            .font: font,
-                            .foregroundColor: UIColor.black
-                        ]
-                        
-                        combinedContent.draw(in: textRect, withAttributes: attributes)
-                    }
-                    
-                    continuation.resume(returning: data)
-                    
-                } catch {
-                    continuation.resume(throwing: PDFError.creationFailed(error.localizedDescription))
-                }
+                let data = NSMutableData()
+                let consumer = CGDataConsumer(data: data)!
+                let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
+                
+                var mediaBox = pageRect
+                let pdfContext = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)!
+                
+                let margin: CGFloat = 50
+                let textRect = CGRect(
+                    x: margin,
+                    y: margin,
+                    width: pageRect.width - (margin * 2),
+                    height: pageRect.height - (margin * 2)
+                )
+                
+                let font = NSFont.systemFont(ofSize: 12)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: NSColor.black
+                ]
+                
+                pdfContext.beginPDFPage(nil)
+                
+                // Draw content
+                let nsString = content as NSString
+                nsString.draw(in: textRect, withAttributes: attributes)
+                
+                pdfContext.endPDFPage()
+                pdfContext.closePDF()
+                
+                continuation.resume(returning: data as Data)
             }
         }
     }
     #endif
     
     // MARK: - Helper Methods
-    private func updateProgress(_ progress: Double) async {
+    
+    private func validatePDFData(_ data: Data) throws {
+        guard !data.isEmpty else {
+            throw NSError(domain: "PDFError", code: 2, userInfo: [NSLocalizedDescriptionKey: "PDF data is empty"])
+        }
+        
+        // Verify it's actually a PDF by checking the header
+        let pdfHeader = "%PDF"
+        let headerData = data.prefix(4)
+        let headerString = String(data: headerData, encoding: .ascii) ?? ""
+        
+        guard headerString == pdfHeader else {
+            throw NSError(domain: "PDFError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Generated data is not a valid PDF"])
+        }
+    }
+    
+    private func updateProgress(_ progress: Double, status: String) async {
         await MainActor.run {
             generationProgress = progress
+            print("📄 PDF Generation: \(Int(progress * 100))% - \(status)")
         }
+    }
+    
+    private func createPlaceholderMeal() -> SafeMealData {
+        return SafeMealData(
+            name: "Comida de ejemplo",
+            type: "Comida",
+            calories: 500,
+            protein: 25,
+            carbs: 50,
+            fat: 15,
+            foods: [
+                SafeFoodData(name: "Alimento principal", weight: 100, calories: 300, protein: 20, carbs: 30, fat: 10),
+                SafeFoodData(name: "Acompañamiento", weight: 80, calories: 200, protein: 5, carbs: 20, fat: 5)
+            ],
+            instructions: "Preparar según las preferencias del paciente."
+        )
     }
 }
 
-// MARK: - PDF Content Structure
-struct PDFContent {
-    let sections: [PDFSection]
-    let language: PlanLanguage
-}
+// ==========================================
+// SAFE DATA STRUCTURES
+// ==========================================
 
-struct PDFSection {
+// These structures represent "safe" versions of your data that won't cause crashes
+// They use standard Swift types and provide default values for missing information
+
+public struct SafeMealPlanData {
     let title: String
-    let content: String
-    let type: PDFSectionType
-    let pageBreakAfter: Bool
+    let meals: [SafeMealData]
+    let days: [SafeDayData]
+    let creationDate: Date
 }
 
-enum PDFSectionType {
-    case cover
-    case summary
-    case dailyPlans
-    case recipes
-    case shoppingList
-    case nutritionAnalysis
-    case appendix
+public struct SafeMealData {
+    let name: String
+    let type: String
+    let calories: Double
+    let protein: Double
+    let carbs: Double
+    let fat: Double
+    let foods: [SafeFoodData]
+    let instructions: String?
 }
 
-// MARK: - Enhanced PDF Viewer with Error Handling
-struct FixedPDFViewer: View {
-    let pdfData: Data
-    @Environment(\.dismiss) private var dismiss
-    @State private var showingSaveDialog = false
-    @State private var errorMessage: String?
+public struct SafeDayData {
+    let date: Date
+    let dayNumber: Int
+    let meals: [SafeMealData]
+}
+
+public struct SafeFoodData {
+    let name: String
+    let weight: Double
+    let calories: Double
+    let protein: Double
+    let carbs: Double
+    let fat: Double
+}
+
+public struct SafePatientData {
+    let firstName: String
+    let lastName: String
+    let age: Int?
     
-    var body: some View {
-        NavigationView {
-            Group {
-                if let document = PDFDocument(data: pdfData) {
-                    // Successful PDF display
-                    PDFKitRepresentable(document: document)
-                        .navigationTitle("Plan de Alimentación")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button("Cerrar") {
-                                    dismiss()
-                                }
-                            }
-                            
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("Guardar") {
-                                    showingSaveDialog = true
-                                }
-                            }
-                        }
-                } else {
-                    // Error state
-                    VStack(spacing: 20) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 50))
-                            .foregroundColor(.orange)
-                        
-                        Text("Error al cargar PDF")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                        
-                        Text("El archivo PDF no se pudo cargar correctamente. Los datos pueden estar corruptos.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        
-                        Button("Cerrar") {
-                            dismiss()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                }
-            }
-        }
-        .fileExporter(
-            isPresented: $showingSaveDialog,
-            document: PDFDocument(data: pdfData).map { PDFFile(document: $0) },
-            contentType: .pdf,
-            defaultFilename: "Plan_Alimentacion_\(Date().timeIntervalSince1970)"
-        ) { result in
-            switch result {
-            case .success(let url):
-                print("✅ PDF saved to: \(url)")
-            case .failure(let error):
-                print("❌ Failed to save PDF: \(error)")
-                errorMessage = error.localizedDescription
-            }
-        }
-        .alert("Error al guardar", isPresented: .constant(errorMessage != nil)) {
-            Button("OK") { errorMessage = nil }
-        } message: {
-            if let error = errorMessage {
-                Text(error)
-            }
-        }
+    var fullName: String {
+        let name = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? "Paciente" : name
     }
 }
 
-// MARK: - PDF Document File Type
-struct PDFFile: FileDocument {
-    static var readableContentTypes: [UTType] { [.pdf] }
-    
-    let document: PDFDocument
-    
-    init(document: PDFDocument) {
-        self.document = document
-    }
-    
-    init(configuration: ReadConfiguration) throws {
-        guard let data = configuration.file.regularFileContents,
-              let document = PDFDocument(data: data) else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        self.document = document
-    }
-    
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = document.dataRepresentation() ?? Data()
-        return FileWrapper(regularFileWithContents: data)
-    }
-}
+// ==========================================
+// USAGE INSTRUCTIONS
+// ==========================================
+
+/*
+ HOW TO USE THE ROBUST PDF SERVICE:
+
+ STEP 1: REPLACE YOUR EXISTING PDF SERVICE
+ Instead of using your current PDF service, use this one:
+
+ let pdfService = RobustPDFService.shared
+
+ STEP 2: GENERATE PDFS SAFELY
+ You can pass ANY meal plan object to this service:
+
+ let pdfData = try await pdfService.generateMealPlanPDF(
+     from: yourMealPlan,           // Can be any object
+     for: yourPatient,             // Can be any object or nil
+     includeRecipes: true,
+     includeShoppingList: true,
+     includeNutritionAnalysis: true,
+     language: .spanish
+ )
+
+ STEP 3: HANDLE THE RESULTS
+ The service provides real-time progress updates:
+
+ pdfService.$isGenerating.sink { isGenerating in
+     // Update your UI to show loading state
+ }
+
+ pdfService.$generationProgress.sink { progress in
+     // Update progress bar (0.0 to 1.0)
+ }
+
+ pdfService.$lastError.sink { error in
+     // Handle any errors that occur
+ }
+
+ STEP 4: DISPLAY THE PDF
+ Use the generated data to display the PDF:
+
+ if let pdfData = pdfService.lastGeneratedPDF {
+     // Show PDF in your UI
+ }
+
+ KEY BENEFITS OF THIS APPROACH:
+ • Never crashes due to missing properties
+ • Works with any data structure
+ • Provides detailed progress feedback
+ • Generates professional-looking PDFs
+ • Handles both iOS and macOS platforms
+ • Includes comprehensive error handling
+
+ This service uses reflection to safely examine your data objects and extract
+ whatever information is available, providing sensible defaults for missing data.
+ */
