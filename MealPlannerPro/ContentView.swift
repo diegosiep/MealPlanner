@@ -1,663 +1,977 @@
 import SwiftUI
 import CoreData
 
-// MARK: - Fixed Content View with Language Support
-struct FixedContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
-    @StateObject private var languageManager = LanguageManager.shared
-    @StateObject private var usdaService = USDAFoodService()
-    @StateObject private var foodManager: FoodDataManager
-    
-    @State private var selectedTab = 0
-    @State private var showingSettings = false
-    
-    init() {
-        let container = PersistenceController.shared.container
-        _foodManager = StateObject(wrappedValue: FoodDataManager(container: container))
+// MARK: - Patient Extensions
+extension Patient {
+    var safeFullName: String {
+        let first = self.firstName ?? ""
+        let last = self.lastName ?? ""
+        let fullName = "\(first) \(last)".trimmingCharacters(in: .whitespaces)
+        return fullName.isEmpty ? "Patient" : fullName
     }
     
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // MARK: - Top Navigation Bar with Language Switcher
-                HStack {
-                    Text("MealPlannerPro")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Spacer()
-                    
-                    // Language Switcher
-                    LanguageSwitcher()
-                    
-                    // Settings Button
-                    Button(action: { showingSettings = true }) {
-                        Image(systemName: "gear")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(NSColor.controlBackgroundColor))
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(Color.gray.opacity(0.3)),
-                    alignment: .bottom
-                )
-                
-                // MARK: - Main Content with Fixed Layout
-                TabView(selection: $selectedTab) {
-                    // Food Search Tab
-                    FixedFoodSearchView(usdaService: usdaService, foodManager: foodManager)
-                        .tabItem {
-                            Image(systemName: "magnifyingglass")
-                            Text(languageManager.currentLanguage.appStrings.foodSearch)
-                        }
-                        .tag(0)
-                    
-                    // My Foods Tab
-                    FixedSavedFoodsView(foodManager: foodManager)
-                        .tabItem {
-                            Image(systemName: "heart.fill")
-                            Text(languageManager.currentLanguage.appStrings.myFoods)
-                        }
-                        .tag(1)
-                    
-                    // Basic Meal Planning Tab
-                    FixedMealPlanningView()
-                        .tabItem {
-                            Image(systemName: "calendar")
-                            Text(languageManager.currentLanguage.appStrings.basicPlans)
-                        }
-                        .tag(2)
-                    
-                    // FIXED AI Assistant Tab
-                    FixedAIMealPlannerView()
-                        .tabItem {
-                            Image(systemName: "brain.head.profile")
-                            Text(languageManager.currentLanguage.appStrings.aiAssistant)
-                        }
-                        .tag(3)
-                    
-                    // Multi-Day Planner Tab
-                    FixedEnhancedAIMealPlannerView()
-                        .tabItem {
-                            Image(systemName: "calendar.badge.plus")
-                            Text(languageManager.currentLanguage.appStrings.multiDayPlanner)
-                        }
-                        .tag(4)
-                }
-            }
-        }
-        .frame(minWidth: 1200, minHeight: 800) // Fixed minimum window size
-        .languageUpdatable()
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
-        }
+    var safeInitials: String {
+        let firstInitial = self.firstName?.first?.uppercased() ?? "P"
+        let lastInitial = self.lastName?.first?.uppercased() ?? ""
+        return "\(firstInitial)\(lastInitial)"
     }
 }
 
-// MARK: - Fixed AI Assistant View (Solving Column Layout Issues)
-struct FixedAIMealPlannerView: View {
-    @StateObject private var languageManager = LanguageManager.shared
-    @StateObject private var llmService = LLMService()
-    @StateObject private var verifiedService = USDAVerifiedMealPlanningService()
+// MARK: - Main Content View with Dietician-Focused Workflow
+struct ContentView: View {
+    @EnvironmentObject var languageManager: LanguageManager
+    @EnvironmentObject var foodSelectionManager: ManualFoodSelectionManager
+    @EnvironmentObject var pdfService: RobustPDFService
     
-    @State private var selectedPatient: Patient?
-    @State private var targetCalories = 600
-    @State private var selectedMealType: MealType = .lunch
-    @State private var selectedCuisine = "Mediterráneo"
-    @State private var dietaryRestrictions: [String] = []
-    @State private var medicalConditions: [String] = []
-    
-    @State private var currentSuggestion: VerifiedMealPlanSuggestion?
-    @State private var showingSuccess = false
-    @State private var errorMessage: String?
-    @State private var isGenerating = false
-    
-    // Access to patients
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \Patient.lastName, ascending: true)],
         animation: .default)
     private var patients: FetchedResults<Patient>
     
-    private var strings: AppLocalizedStrings {
-        languageManager.currentLanguage.appStrings
-    }
+    @State private var selectedTab = 0
+    @State private var showingSettings = false
+    @State private var showingPatientCreation = false
+    @State private var selectedPatient: Patient?
     
     var body: some View {
-        // FIXED: Use HSplitView for proper two-column layout
-        HSplitView {
-            // LEFT COLUMN - Configuration Panel (Fixed Width)
-            VStack(spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(strings.aiAssistantTitle)
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
-                    Text(strings.aiAssistantSubtitle)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ZStack {
+            // Main content without NavigationView wrapper
+            VStack(spacing: 0) {
+                // Custom top bar
+                customTopBar
                 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Patient Selection
-                        configurationSection(title: strings.patientSelection) {
-                            patientSelectionView
-                        }
-                        
-                        // Meal Configuration
-                        configurationSection(title: strings.mealConfiguration) {
-                            mealConfigurationView
-                        }
-                        
-                        // Preferences
-                        configurationSection(title: strings.preferences) {
-                            preferencesView
-                        }
-                        
-                        // Generate Button
-                        generateButton
-                    }
-                    .padding(.bottom, 20)
+                // Main content area
+                if selectedPatient != nil {
+                    // Patient selected - show full functionality
+                    patientWorkflowView
+                } else {
+                    // No patient selected - show patient selection
+                    patientSelectionView
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.compatibleWindowBackground)
+        }
+        .withManualFoodSelection()
+        .compatibleSheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+        .compatibleSheet(isPresented: $showingPatientCreation) {
+            PatientCreationView { newPatient in
+                selectedPatient = newPatient
+            }
+        }
+    }
+    
+    // MARK: - Custom Top Bar
+    private var customTopBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                // App Title
+                HStack(spacing: 8) {
+                    Image(systemName: "heart.text.square.fill")
+                        .font(.title2)
+                        .foregroundColor(.green)
+                    
+                    Text("MealPlanner Pro")
+                        .font(.title2)
+                        .fontWeight(.bold)
                 }
                 
                 Spacer()
-            }
-            .frame(width: 350) // Fixed width for left panel
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-            
-            // RIGHT COLUMN - Results Display (Expandable)
-            VStack(spacing: 0) {
-                if isGenerating {
-                    // Loading State
-                    VStack(spacing: 20) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Text(strings.generating)
-                            .font(.headline)
-                        Text("Verificando alimentos con base de datos USDA...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white)
-                } else if let suggestion = currentSuggestion {
-                    // Results Display
-                    resultDisplayView(suggestion: suggestion)
-                } else {
-                    // Empty State
-                    VStack(spacing: 20) {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray.opacity(0.5))
-                        
-                        Text(strings.generatePersonalizedMeals)
-                            .font(.title2)
-                            .fontWeight(.medium)
-                            .foregroundColor(.secondary)
-                        
-                        Text("Configura los parámetros en el panel izquierdo y genera una comida personalizada")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white)
-                }
-            }
-            .overlay(
-                Rectangle()
-                    .frame(width: 1)
-                    .foregroundColor(Color.gray.opacity(0.3)),
-                alignment: .leading
-            )
-        }
-        .alert(strings.mealGenerated, isPresented: $showingSuccess) {
-            Button(strings.ok) { }
-        }
-        .alert(strings.error, isPresented: .constant(errorMessage != nil)) {
-            Button(strings.ok) { errorMessage = nil }
-        } message: {
-            if let error = errorMessage {
-                Text(error)
-            }
-        }
-    }
-    
-    // MARK: - Configuration Sections
-    private func configurationSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.primary)
-            
-            content()
-        }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-    }
-    
-    private var patientSelectionView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(strings.selectPatient)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            
-            Picker("", selection: $selectedPatient) {
-                Text("Sin paciente específico").tag(nil as Patient?)
-                ForEach(patients, id: \.self) { patient in
-                    Text("\(patient.firstName ?? "") \(patient.lastName ?? "")")
-                        .tag(patient as Patient?)
-                }
-            }
-            .pickerStyle(MenuPickerStyle())
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-    
-    private var mealConfigurationView: some View {
-        VStack(spacing: 12) {
-            // Target Calories
-            VStack(alignment: .leading, spacing: 4) {
-                Text(strings.targetCalories)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
                 
-                HStack {
-                    Slider(value: Binding(
-                        get: { Double(targetCalories) },
-                        set: { targetCalories = Int($0) }
-                    ), in: 200...1500, step: 50)
+                // Patient Selector
+                if let patient = selectedPatient {
+                    PatientBadge(patient: patient) {
+                        selectedPatient = nil
+                    }
+                }
+                
+                // Status Indicators
+                HStack(spacing: 12) {
+                    if foodSelectionManager.selectionStatus != .noSelectionsNeeded {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text("Food verification pending")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
                     
-                    Text("\(targetCalories) kcal")
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                        .frame(width: 80, alignment: .trailing)
-                }
-            }
-            
-            // Meal Type
-            VStack(alignment: .leading, spacing: 4) {
-                Text(strings.mealType)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Picker("", selection: $selectedMealType) {
-                    ForEach(MealType.allCases, id: \.self) { mealType in
-                        Text(mealType.localizedName(language: languageManager.currentLanguage))
-                            .tag(mealType)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-            }
-            
-            // Cuisine
-            VStack(alignment: .leading, spacing: 4) {
-                Text(strings.cuisine)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Picker("", selection: $selectedCuisine) {
-                    Text("Mediterráneo").tag("Mediterráneo")
-                    Text("Mexicano").tag("Mexicano")
-                    Text("Asiático").tag("Asiático")
-                    Text("Americano").tag("Americano")
-                    Text("Vegetariano").tag("Vegetariano")
-                }
-                .pickerStyle(MenuPickerStyle())
-            }
-        }
-    }
-    
-    private var preferencesView: some View {
-        VStack(spacing: 12) {
-            // Dietary Restrictions
-            VStack(alignment: .leading, spacing: 8) {
-                Text(strings.dietaryRestrictions)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 8) {
-                    ForEach(["Sin gluten", "Sin lácteos", "Vegano", "Bajo sodio"], id: \.self) { restriction in
-                        ToggleChip(
-                            text: restriction,
-                            isSelected: dietaryRestrictions.contains(restriction)
-                        ) {
-                            if dietaryRestrictions.contains(restriction) {
-                                dietaryRestrictions.removeAll { $0 == restriction }
-                            } else {
-                                dietaryRestrictions.append(restriction)
-                            }
+                    if pdfService.isGenerating {
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                            Text("Generating PDF...")
+                                .font(.caption)
+                                .foregroundColor(.blue)
                         }
                     }
                 }
-            }
-            
-            // Medical Conditions
-            VStack(alignment: .leading, spacing: 8) {
-                Text(strings.medicalConditions)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
                 
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 8) {
-                    ForEach(["Diabetes", "Hipertensión", "Renal", "Cardíaco"], id: \.self) { condition in
-                        ToggleChip(
-                            text: condition,
-                            isSelected: medicalConditions.contains(condition)
-                        ) {
-                            if medicalConditions.contains(condition) {
-                                medicalConditions.removeAll { $0 == condition }
-                            } else {
-                                medicalConditions.append(condition)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var generateButton: some View {
-        Button(action: generateMeal) {
-            HStack {
-                if isGenerating {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                } else {
-                    Image(systemName: "brain.head.profile")
-                }
-                Text(isGenerating ? strings.generating : strings.generateMeal)
-            }
-            .font(.headline)
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(isGenerating ? Color.gray : Color.blue)
-            .cornerRadius(10)
-        }
-        .disabled(isGenerating)
-    }
-    
-    private func resultDisplayView(suggestion: VerifiedMealPlanSuggestion) -> some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Meal Header
-                VStack(spacing: 8) {
-                    Text(suggestion.originalAISuggestion.name)
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .multilineTextAlignment(.center)
-                    
-                    Text("\(Int(suggestion.originalAISuggestion.estimatedNutrition.calories)) kcal • \(suggestion.verifiedFoods.count) alimentos")
-                        .font(.subheadline)
+                // Language Switcher
+                LanguageSwitcherView()
+                
+                // Settings
+                Button(action: { showingSettings = true }) {
+                    Image(systemName: "gear")
+                        .font(.title3)
                         .foregroundColor(.secondary)
                 }
-                .padding()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.compatibleControlBackground)
+            
+            Divider()
+        }
+    }
+    
+    // MARK: - Patient Selection View
+    private var patientSelectionView: some View {
+        VStack(spacing: 40) {
+            Spacer()
+            
+            // Welcome message
+            VStack(spacing: 16) {
+                Image(systemName: "person.2.circle.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.blue.opacity(0.8))
                 
-                // Foods List
-                LazyVStack(spacing: 12) {
-                    ForEach(suggestion.verifiedFoods, id: \.originalAISuggestion.id) { verifiedFood in
-                        VerifiedFoodCard(verifiedFood: verifiedFood)
+                Text("Welcome to MealPlanner Pro")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                Text("Select or create a patient to begin")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Patient list or empty state
+            if patients.isEmpty {
+                VStack(spacing: 20) {
+                    Text("No patients yet")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    Button(action: { showingPatientCreation = true }) {
+                        Label("Create First Patient", systemImage: "person.badge.plus")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .cornerRadius(10)
                     }
                 }
-                .padding(.horizontal)
-                
-                // Nutrition Summary
-                NutritionSummaryCard(suggestion: suggestion)
-                    .padding(.horizontal)
-                
-                Spacer(minLength: 20)
-            }
-        }
-        .background(Color(NSColor.controlBackgroundColor))
-    }
-    
-    private func generateMeal() {
-        isGenerating = true
-        errorMessage = nil
-        
-        Task {
-            do {
-                let request = MealPlanRequest(
-                    targetCalories: targetCalories,
-                    targetProtein: Double(targetCalories) * 0.15 / 4,
-                    targetCarbs: Double(targetCalories) * 0.55 / 4,
-                    targetFat: Double(targetCalories) * 0.30 / 9,
-                    mealType: selectedMealType,
-                    cuisinePreference: selectedCuisine,
-                    dietaryRestrictions: dietaryRestrictions,
-                    medicalConditions: medicalConditions,
-                    patientId: selectedPatient?.id ?? UUID()
-                )
-                let suggestion = try await verifiedService.generateVerifiedMealPlan(request: request)
-                
-                await MainActor.run {
-                    currentSuggestion = suggestion
-                    isGenerating = false
-                    showingSuccess = true
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isGenerating = false
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Supporting Components
-struct ToggleChip: View {
-    let text: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(text)
-                .font(.caption)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
-                .foregroundColor(isSelected ? .white : .primary)
-                .cornerRadius(16)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct VerifiedFoodCard: View {
-    let verifiedFood: VerifiedFood
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(verifiedFood.originalAISuggestion.name)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text("\(verifiedFood.originalAISuggestion.gramWeight)g")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                if true { // Always show as verified for now
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("Verificado USDA")
-                            .font(.caption)
-                            .foregroundColor(.green)
+            } else {
+                VStack(spacing: 16) {
+                    Text("Select a Patient")
+                        .font(.headline)
+                    
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            ForEach(patients, id: \.objectID) { patient in
+                                PatientCard(patient: patient) {
+                                    selectedPatient = patient
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 40)
+                    }
+                    .frame(maxHeight: 400)
+                    
+                    Button(action: { showingPatientCreation = true }) {
+                        Label("New Patient", systemImage: "person.badge.plus")
+                            .font(.headline)
+                            .foregroundColor(.blue)
                     }
                 }
             }
             
             Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("\(Int(verifiedFood.verifiedNutrition.calories)) kcal")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text("P: \(Int(verifiedFood.verifiedNutrition.protein))g")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(8)
-        .shadow(color: .black.opacity(0.05), radius: 1, x: 0, y: 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.compatibleWindowBackground)
+    }
+    
+    // MARK: - Patient Workflow View
+    private var patientWorkflowView: some View {
+        TabView(selection: $selectedTab) {
+            // Patient Dashboard
+            PatientDashboardView(patient: selectedPatient!)
+                .tabItem {
+                    Image(systemName: "heart.text.square")
+                    Text("Dashboard")
+                }
+                .tag(0)
+            
+            // Food Database & Meal Logging
+            FoodDatabaseView(patient: selectedPatient!)
+                .tabItem {
+                    Image(systemName: "magnifyingglass")
+                    Text("Food Database")
+                }
+                .tag(1)
+            
+            // Meal History & Analysis
+            MealHistoryView(patient: selectedPatient!)
+                .tabItem {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                    Text("Analysis")
+                }
+                .tag(2)
+            
+            // AI Meal Planning
+            AIMealPlanningView(patient: selectedPatient!)
+                .tabItem {
+                    Image(systemName: "brain")
+                    Text("AI Planning")
+                }
+                .tag(3)
+            
+            // PDF Export & Reports
+            ReportsExportView(patient: selectedPatient!)
+                .tabItem {
+                    Image(systemName: "doc.text.fill")
+                    Text("Reports")
+                }
+                .tag(4)
+        }
     }
 }
 
-struct NutritionSummaryCard: View {
-    let suggestion: VerifiedMealPlanSuggestion
-    
-    var totalCalories: Double {
-        suggestion.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.calories }
-    }
-    
-    var totalProtein: Double {
-        suggestion.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.protein }
-    }
-    
-    var totalCarbs: Double {
-        suggestion.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.carbs }
-    }
-    
-    var totalFat: Double {
-        suggestion.verifiedFoods.reduce(0.0) { $0 + $1.verifiedNutrition.fat }
-    }
+// MARK: - Patient Badge Component
+struct PatientBadge: View {
+    let patient: Patient
+    let onRemove: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Resumen Nutricional")
-                .font(.headline)
-                .foregroundColor(.primary)
+        HStack(spacing: 8) {
+            Image(systemName: "person.circle.fill")
+                .foregroundColor(.blue)
             
-            HStack(spacing: 20) {
-                NutritionItem(label: "Calorías", value: "\(Int(totalCalories))", unit: "kcal")
-                NutritionItem(label: "Proteína", value: "\(Int(totalProtein))", unit: "g")
-                NutritionItem(label: "Carbohidratos", value: "\(Int(totalCarbs))", unit: "g")
-                NutritionItem(label: "Grasa", value: "\(Int(totalFat))", unit: "g")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Current Patient")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                Text(patient.safeFullName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+            
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Patient Card Component
+struct PatientCard: View {
+    let patient: Patient
+    let onSelect: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 16) {
+                // Patient Avatar
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.2))
+                        .frame(width: 60, height: 60)
+                    
+                    Text(patient.safeInitials)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.blue)
+                }
+                
+                // Patient Info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(patient.safeFullName)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    HStack(spacing: 12) {
+                        if let dob = patient.dateOfBirth {
+                            Label("\(calculateAge(from: dob)) years", systemImage: "calendar")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        if patient.currentWeight > 0 {
+                            Label("\(Int(patient.currentWeight)) kg", systemImage: "scalemass")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.secondary)
+                    .opacity(isHovered ? 1 : 0.5)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isHovered ? Color.blue.opacity(0.05) : Color.compatibleControlBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isHovered ? Color.blue.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isHovered = hovering
+            }
+        }
+    }
+    
+    private func calculateAge(from date: Date) -> Int {
+        Calendar.current.dateComponents([.year], from: date, to: Date()).year ?? 0
+    }
+}
+
+// MARK: - Dashboard View
+struct PatientDashboardView: View {
+    let patient: Patient
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Patient Summary Card
+                PatientSummaryCard(patient: patient)
+                
+                // Quick Actions
+                QuickActionsGrid(patient: patient)
+                
+                // Today's Overview
+                TodaysNutritionOverview(patient: patient)
+                
+                // Recent Meals
+                RecentMealsCard(patient: patient)
+                
+                // Nutritional Goals Progress
+                NutritionalGoalsCard(patient: patient)
+            }
+            .padding()
+        }
+    }
+}
+
+// MARK: - Patient Summary Card
+struct PatientSummaryCard: View {
+    let patient: Patient
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(patient.safeFullName)
+                        .font(.title)
+                        .fontWeight(.bold)
+                    
+                    HStack(spacing: 20) {
+                        if let dob = patient.dateOfBirth {
+                            Label("\(calculateAge(from: dob)) years", systemImage: "calendar")
+                        }
+                        
+                        Label("\(Int(patient.currentWeight)) kg", systemImage: "scalemass")
+                        
+                        Label("\(Int(patient.currentHeight)) cm", systemImage: "ruler")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                // BMI Indicator
+                VStack(spacing: 4) {
+                    Text("BMI")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(String(format: "%.1f", calculateBMI()))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(bmiColor)
+                    
+                    Text(bmiCategory)
+                        .font(.caption)
+                        .foregroundColor(bmiColor)
+                }
+                .padding()
+                .background(bmiColor.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
+            // Medical Conditions & Dietary Restrictions
+            if let conditions = patient.medicalConditions, !conditions.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Medical Conditions")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(conditions)
+                        .font(.subheadline)
+                }
+            }
+            
+            if let restrictions = patient.dietaryPreferences, !restrictions.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Dietary Restrictions")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(restrictions)
+                        .font(.subheadline)
+                }
             }
         }
         .padding()
-        .background(Color.blue.opacity(0.05))
+        .background(Color.compatibleControlBackground)
+        .cornerRadius(12)
+    }
+    
+    private func calculateAge(from date: Date) -> Int {
+        Calendar.current.dateComponents([.year], from: date, to: Date()).year ?? 0
+    }
+    
+    private func calculateBMI() -> Double {
+        let heightInMeters = patient.currentHeight / 100
+        return patient.currentWeight / (heightInMeters * heightInMeters)
+    }
+    
+    private var bmiCategory: String {
+        let bmi = calculateBMI()
+        switch bmi {
+        case ..<18.5: return "Underweight"
+        case 18.5..<25: return "Normal"
+        case 25..<30: return "Overweight"
+        default: return "Obese"
+        }
+    }
+    
+    private var bmiColor: Color {
+        let bmi = calculateBMI()
+        switch bmi {
+        case ..<18.5: return .orange
+        case 18.5..<25: return .green
+        case 25..<30: return .orange
+        default: return .red
+        }
+    }
+}
+
+// MARK: - Quick Actions Grid
+struct QuickActionsGrid: View {
+    let patient: Patient
+    
+    var body: some View {
+        LazyVGrid(columns: [
+            GridItem(.flexible()),
+            GridItem(.flexible()),
+            GridItem(.flexible()),
+            GridItem(.flexible())
+        ], spacing: 16) {
+            QuickActionButton(
+                icon: "plus.circle.fill",
+                title: "Log Meal",
+                color: .blue
+            ) {
+                // Action
+            }
+            
+            QuickActionButton(
+                icon: "magnifyingglass",
+                title: "Search Food",
+                color: .green
+            ) {
+                // Action
+            }
+            
+            QuickActionButton(
+                icon: "brain",
+                title: "AI Plan",
+                color: .purple
+            ) {
+                // Action
+            }
+            
+            QuickActionButton(
+                icon: "doc.text.fill",
+                title: "Export PDF",
+                color: .orange
+            ) {
+                // Action
+            }
+        }
+    }
+}
+
+struct QuickActionButton: View {
+    let icon: String
+    let title: String
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(color)
+                
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(color.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Placeholder Views
+struct TodaysNutritionOverview: View {
+    let patient: Patient
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Today's Nutrition")
+                .font(.headline)
+            
+            HStack(spacing: 16) {
+                NutrientProgressCard(
+                    nutrient: "Calories",
+                    current: 1250,
+                    target: 2000,
+                    unit: "kcal",
+                    color: .blue
+                )
+                
+                NutrientProgressCard(
+                    nutrient: "Protein",
+                    current: 65,
+                    target: 120,
+                    unit: "g",
+                    color: .green
+                )
+                
+                NutrientProgressCard(
+                    nutrient: "Carbs",
+                    current: 180,
+                    target: 250,
+                    unit: "g",
+                    color: .orange
+                )
+                
+                NutrientProgressCard(
+                    nutrient: "Fat",
+                    current: 45,
+                    target: 78,
+                    unit: "g",
+                    color: .purple
+                )
+            }
+        }
+    }
+}
+
+struct NutrientProgressCard: View {
+    let nutrient: String
+    let current: Double
+    let target: Double
+    let unit: String
+    let color: Color
+    
+    private var progress: Double {
+        min(current / target, 1.0)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(nutrient)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(Int(current))")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(color)
+                
+                Text("/ \(Int(target)) \(unit)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            ProgressView(value: progress)
+                .progressViewStyle(LinearProgressViewStyle(tint: color))
+                .frame(height: 4)
+            
+            Text("\(Int(progress * 100))%")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color.compatibleControlBackground)
+        .cornerRadius(8)
+    }
+}
+
+struct RecentMealsCard: View {
+    let patient: Patient
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Recent Meals")
+                    .font(.headline)
+                
+                Spacer()
+                
+                Button("View All") {
+                    // Action
+                }
+                .font(.caption)
+                .foregroundColor(.blue)
+            }
+            
+            VStack(spacing: 8) {
+                RecentMealRow(
+                    mealType: "Breakfast",
+                    time: "8:30 AM",
+                    calories: 420,
+                    icon: "sunrise.fill"
+                )
+                
+                RecentMealRow(
+                    mealType: "Lunch",
+                    time: "1:00 PM",
+                    calories: 650,
+                    icon: "sun.max.fill"
+                )
+                
+                RecentMealRow(
+                    mealType: "Snack",
+                    time: "3:30 PM",
+                    calories: 180,
+                    icon: "leaf.fill"
+                )
+            }
+        }
+        .padding()
+        .background(Color.compatibleControlBackground)
         .cornerRadius(12)
     }
 }
 
-struct NutritionItem: View {
-    let label: String
-    let value: String
-    let unit: String
+struct RecentMealRow: View {
+    let mealType: String
+    let time: String
+    let calories: Int
+    let icon: String
     
     var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.blue)
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(.orange)
             
-            Text(unit)
-                .font(.caption)
-                .foregroundColor(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mealType)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                
+                Text(time)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
             
-            Text(label)
-                .font(.caption)
+            Spacer()
+            
+            Text("\(calories) kcal")
+                .font(.subheadline)
                 .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
     }
 }
 
-// MARK: - Extensions for Localization
-extension MealType {
-    func localizedName(language: PlanLanguage) -> String {
-        switch language {
-        case .spanish:
-            switch self {
-            case .breakfast: return "Desayuno"
-            case .lunch: return "Almuerzo"
-            case .dinner: return "Cena"
-            case .snack: return "Merienda"
-            }
-        case .english:
-            switch self {
-            case .breakfast: return "Breakfast"
-            case .lunch: return "Lunch"
-            case .dinner: return "Dinner"
-            case .snack: return "Snack"
-            }
+struct NutritionalGoalsCard: View {
+    let patient: Patient
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Weekly Progress")
+                .font(.headline)
+            
+            // Placeholder for chart
+            Rectangle()
+                .fill(Color.gray.opacity(0.1))
+                .frame(height: 200)
+                .overlay(
+                    Text("Nutrition Trends Chart")
+                        .foregroundColor(.secondary)
+                )
+                .cornerRadius(8)
         }
+        .padding()
+        .background(Color.compatibleControlBackground)
+        .cornerRadius(12)
     }
 }
 
-// MARK: - Placeholder Views (to be implemented)
-struct FixedFoodSearchView: View {
-    let usdaService: USDAFoodService
-    let foodManager: FoodDataManager
+// MARK: - Food Database View
+struct FoodDatabaseView: View {
+    let patient: Patient
+    @StateObject private var usdaService = USDAFoodService()
+    @StateObject private var foodManager: FoodDataManager
     
-    var body: some View {
-        Text("Food Search - Coming Soon")
+    init(patient: Patient) {
+        self.patient = patient
+        let container = PersistenceController.shared.container
+        _foodManager = StateObject(wrappedValue: FoodDataManager(container: container))
     }
-}
-
-struct FixedSavedFoodsView: View {
-    let foodManager: FoodDataManager
-    
-    var body: some View {
-        Text("Saved Foods - Coming Soon")
-    }
-}
-
-struct FixedMealPlanningView: View {
-    var body: some View {
-        Text("Meal Planning - Coming Soon")
-    }
-}
-
-struct FixedEnhancedAIMealPlannerView: View {
-    var body: some View {
-        Text("Enhanced AI Meal Planner - Coming Soon")
-    }
-}
-
-struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         VStack {
-            Text("Settings")
+            Text("USDA Food Database Search")
                 .font(.title)
             
-            Button("Close") {
-                dismiss()
-            }
+            // Search interface
+            Text("Search and verify foods with USDA database")
+                .foregroundColor(.secondary)
+            
+            // Implement search UI
         }
         .padding()
-        .frame(width: 400, height: 300)
+    }
+}
+
+// MARK: - Meal History View
+struct MealHistoryView: View {
+    let patient: Patient
+    
+    var body: some View {
+        VStack {
+            Text("Meal History & Nutritional Analysis")
+                .font(.title)
+            
+            Text("Track and analyze patient's dietary intake")
+                .foregroundColor(.secondary)
+        }
+        .padding()
+    }
+}
+
+// MARK: - AI Meal Planning View
+struct AIMealPlanningView: View {
+    let patient: Patient
+    
+    var body: some View {
+        VStack {
+            Text("AI-Powered Meal Planning")
+                .font(.title)
+            
+            Text("Generate creative, culturally-adapted meal plans")
+                .foregroundColor(.secondary)
+            
+            // Use existing AI meal planner
+            AIMealPlannerView()
+        }
+    }
+}
+
+// MARK: - Reports Export View
+struct ReportsExportView: View {
+    let patient: Patient
+    @StateObject private var pdfService = RobustPDFService.shared
+    
+    var body: some View {
+        VStack {
+            Text("Reports & PDF Export")
+                .font(.title)
+            
+            Text("Generate beautiful bilingual PDFs for patients")
+                .foregroundColor(.secondary)
+            
+            Button("Generate Comprehensive PDF Report") {
+                // Generate PDF
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Patient Creation View
+struct PatientCreationView: View {
+    let onSave: (Patient) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    
+    @State private var firstName = ""
+    @State private var lastName = ""
+    @State private var dateOfBirth = Date()
+    @State private var gender = "Male"
+    @State private var weight: Double = 70
+    @State private var height: Double = 170
+    @State private var activityLevel = "Moderately Active"
+    @State private var medicalConditions = ""
+    @State private var dietaryRestrictions = ""
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Basic Information") {
+                    TextField("First Name", text: $firstName)
+                    TextField("Last Name", text: $lastName)
+                    DatePicker("Date of Birth", selection: $dateOfBirth, displayedComponents: .date)
+                    Picker("Gender", selection: $gender) {
+                        Text("Male").tag("Male")
+                        Text("Female").tag("Female")
+                        Text("Other").tag("Other")
+                    }
+                }
+                
+                Section("Physical Measurements") {
+                    HStack {
+                        Text("Weight")
+                        Spacer()
+                        TextField("Weight", value: $weight, format: .number)
+                            .frame(width: 80)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        Text("kg")
+                    }
+                    
+                    HStack {
+                        Text("Height")
+                        Spacer()
+                        TextField("Height", value: $height, format: .number)
+                            .frame(width: 80)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        Text("cm")
+                    }
+                }
+                
+                Section("Activity & Health") {
+                    Picker("Activity Level", selection: $activityLevel) {
+                        Text("Sedentary").tag("Sedentary")
+                        Text("Lightly Active").tag("Lightly Active")
+                        Text("Moderately Active").tag("Moderately Active")
+                        Text("Very Active").tag("Very Active")
+                        Text("Extremely Active").tag("Extremely Active")
+                    }
+                    
+                    TextField("Medical Conditions", text: $medicalConditions)
+                    TextField("Dietary Restrictions", text: $dietaryRestrictions)
+                }
+            }
+            .navigationTitle("New Patient")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        savePatient()
+                    }
+                    .disabled(firstName.isEmpty || lastName.isEmpty)
+                }
+            }
+        }
+    }
+    
+    private func savePatient() {
+        let patientManager = PatientManager(container: PersistenceController.shared.container)
+        
+        let newPatient = patientManager.createNewPatient(
+            firstName: firstName,
+            lastName: lastName,
+            dateOfBirth: dateOfBirth,
+            gender: gender,
+            height: height,
+            weight: weight,
+            activityLevel: activityLevel,
+            medicalConditions: medicalConditions.isEmpty ? [] : [medicalConditions],
+            allergies: [],
+            dietaryPreferences: dietaryRestrictions.isEmpty ? [] : [dietaryRestrictions]
+        )
+        
+        onSave(newPatient)
+        dismiss()
+    }
+}
+
+// MARK: - Settings View Update
+struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var languageManager = LanguageManager.shared
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Language") {
+                    Picker("App Language", selection: $languageManager.currentLanguage) {
+                        ForEach(PlanLanguage.allCases, id: \.self) { language in
+                            HStack {
+                                Text(language.flag)
+                                Text(language.displayName)
+                            }
+                            .tag(language)
+                        }
+                    }
+                }
+                
+                Section("About") {
+                    HStack {
+                        Text("Version")
+                        Spacer()
+                        Text("1.0.0")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Developer")
+                        Spacer()
+                        Text("Diego Sierra")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }

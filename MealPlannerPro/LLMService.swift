@@ -461,10 +461,15 @@ protocol LLMProvider {
 // MARK: - OpenAI Provider (Free Tier)
 class OpenAIProvider: LLMProvider {
     let name = "OpenAI GPT-3.5"
-    private let apiKey = "your-openai-api-key" // Replace with your key
+    private let secureKeyManager = SecureAPIKeyManager.shared
+    
+    private var apiKey: String? {
+        return secureKeyManager.openaiAPIKey
+    }
     
     func generateCompletion(prompt: String) async throws -> String {
-        guard !apiKey.isEmpty && apiKey != "your-openai-api-key" else {
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            print("❌ OpenAI API key not found in keychain. Please configure API keys.")
             throw LLMError.invalidAPIKey
         }
         
@@ -506,10 +511,15 @@ class OpenAIProvider: LLMProvider {
 // MARK: - Correct Free Hugging Face Provider
 class HuggingFaceProvider: LLMProvider {
     let name = "Hugging Face Free API"
-    private let apiKey = "example" // ← Your token here
+    private let secureKeyManager = SecureAPIKeyManager.shared
+    
+    private var apiKey: String? {
+        return secureKeyManager.huggingfaceAPIKey
+    }
     
     func generateCompletion(prompt: String) async throws -> String {
-        guard !apiKey.isEmpty && apiKey != "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" else {
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            print("❌ HuggingFace API key not found in keychain. Please configure API keys.")
             throw LLMError.invalidAPIKey
         }
         

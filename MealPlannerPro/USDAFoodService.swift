@@ -1,8 +1,12 @@
 import Foundation
 
 class USDAFoodService: ObservableObject {
-    private let apiKey = "example"
     private let baseURL = "https://api.nal.usda.gov/fdc/v1"
+    private let secureKeyManager = SecureAPIKeyManager.shared
+    
+    private var apiKey: String? {
+        return secureKeyManager.usdaAPIKey
+    }
     
     private lazy var urlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -12,6 +16,11 @@ class USDAFoodService: ObservableObject {
     }()
     
     func searchFoods(query: String, limit: Int = 10) async throws -> [USDAFood] {
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            print("❌ USDA API key not found in keychain. Please configure API keys.")
+            throw USDAError.invalidAPIKey
+        }
+        
         var components = URLComponents(string: "\(baseURL)/foods/search")!
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
@@ -289,6 +298,7 @@ enum USDAError: Error, LocalizedError {
     case dataParsingError
     case rateLimitExceeded
     case serverError(Int)
+    case invalidAPIKey
     
     var errorDescription: String? {
         switch self {
@@ -304,6 +314,8 @@ enum USDAError: Error, LocalizedError {
             return "API rate limit exceeded. Please wait before trying again."
         case .serverError(let code):
             return "Server error with code: \(code)"
+        case .invalidAPIKey:
+            return "USDA API key not configured. Please check your API key settings."
         }
     }
 }

@@ -3,14 +3,19 @@ import Foundation
 // MARK: - Claude AI Provider for Meal Planning
 class ClaudeProvider: LLMProvider {
     let name = "Claude AI (Anthropic)"
-    private let apiKey = "example" // Replace with your actual API key
     private let baseURL = "https://api.anthropic.com/v1/messages"
+    private let secureKeyManager = SecureAPIKeyManager.shared
+    
+    private var apiKey: String? {
+        return secureKeyManager.claudeAPIKey
+    }
     
     func generateCompletion(prompt: String) async throws -> String {
         // Validate API key
-//        guard !apiKey.isEmpty && apiKey != "" else {
-//            throw LLMError.invalidAPIKey
-//        }
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            print("❌ Claude API key not found in keychain. Please configure API keys.")
+            throw LLMError.invalidAPIKey
+        }
         
         // Create the request URL
         guard let url = URL(string: baseURL) else {
