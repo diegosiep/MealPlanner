@@ -54,7 +54,7 @@ class SecureAPIKeyManager {
         return !key.isEmpty && key != "DEMO_MODE"
     }
     
-    // MARK: - Easy Access Properties
+    // MARK: - Easy Access Properties nhihjiojiojiji
     var usdaAPIKey: String? {
         let key = retrieveAPIKey(for: .usdaAPI)
         return (key == "DEMO_MODE") ? nil : key
@@ -85,7 +85,3 @@ class SecureAPIKeyManager {
         storeAPIKey("DEMO_MODE", for: .usdaAPI)
     }
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> 8d21c2191abc233b0a0e26a3c447fe5a95cb8304
