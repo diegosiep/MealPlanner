@@ -84,7 +84,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(Color(.systemBackground))
+        .background(Color.compatibleWindowBackground)  // Fixed: Using platform-compatible color
         .shadow(color: Color.black.opacity(0.1), radius: 1, x: 0, y: 1)
     }
 }
@@ -243,9 +243,9 @@ struct APISetupView: View {
                 }
             }
             .padding(24)
-            .navigationBarTitleDisplayMode(.inline)
+            .compatibleNavigationBarTitleDisplayMode(.inline)  // Fixed: Using platform-compatible method
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {  // Fixed: Using macOS-compatible placement
                     Button("Done") {
                         dismiss()
                     }
@@ -348,7 +348,7 @@ struct FavoritesTab: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.compatibleControlBackground)  // Fixed: Using platform-compatible color
     }
 }
 
@@ -361,7 +361,7 @@ struct AssistantTab: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.compatibleControlBackground)  // Fixed: Using platform-compatible color
     }
 }
 
@@ -374,7 +374,7 @@ struct MealPlanTab: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.compatibleControlBackground)  // Fixed: Using platform-compatible color
     }
 }
 
