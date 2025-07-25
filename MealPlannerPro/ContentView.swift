@@ -43,6 +43,14 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingAPISetup) {
             APISetupView(apiManager: apiManager)
+                .frame(minWidth: 400, minHeight: 500)
+                .presentationDetents([.medium, .large])
+        }
+        .onAppear {
+            // If no USDA key or in demo mode, prompt for API setup
+            if !apiManager.hasUSDAKey || apiManager.isInDemoMode {
+                showingAPISetup = true
+            }
         }
     }
     
@@ -259,6 +267,7 @@ struct APISetupView: View {
         } message: {
             Text("API keys saved successfully!")
         }
+        .frame(minWidth: 400, minHeight: 500) // Add this line
     }
     
     private func saveKeys() {
